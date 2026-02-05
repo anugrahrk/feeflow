@@ -1,0 +1,20 @@
+ :root {
+            --primary-blue: #3b82f6;
+            --dark-navy: #0a0f1d;
+            --card-blue: #161e2e;
+            --border-blue: #1e293b;
+        }
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0f172a;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #1e293b;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #334155;
+        }
