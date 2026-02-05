@@ -1,32 +1,264 @@
-import { SignIn } from "@clerk/clerk-react";
+import React, { useState, useEffect } from "react";
+import { useSignIn, useAuth } from "@clerk/clerk-react";
+import { toast } from "sonner";
+import { useNavigate } from "react-router-dom";
 
 export default function Login() {
-  return (
-    <div className="flex h-screen w-full items-center justify-center bg-slate-50 dark:bg-[#111318]">
-      {/* Background Pattern */}
-      <div className="absolute inset-0 z-0 opacity-40" style={{
-        backgroundImage: 'radial-gradient(#cbd5e1 1px, transparent 1px)',
-        backgroundSize: '32px 32px'
-      }}></div>
+  const { isLoaded, signIn, setActive } = useSignIn();
+  const { isSignedIn } = useAuth();
+  const navigate = useNavigate();
 
-      <div className="relative z-10 w-full max-w-md p-4">
-        <SignIn
-          appearance={{
-            elements: {
-              rootBox: "w-full",
-              card: "w-full shadow-none border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1a2230]",
-              headerTitle: "text-[#111318] dark:text-white",
-              headerSubtitle: "text-slate-600 dark:text-slate-400",
-              formButtonPrimary: "bg-primary hover:bg-blue-600 text-sm normal-case",
-              socialButtonsBlockButton: "border-slate-200 dark:border-slate-700 text-[#111318] dark:text-white hover:bg-slate-50 dark:hover:bg-slate-800",
-              formFieldLabel: "text-[#111318] dark:text-white",
-              formFieldInput: "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-[#111318] dark:text-white",
-              footerActionLink: "text-primary hover:text-blue-600"
-            }
-          }}
-          signUpUrl="/signup"
-          forceRedirectUrl="/"
-        />
+  const [step, setStep] = useState<'email' | 'otp'>('email');
+  const [email, setEmail] = useState("");
+  const [otp, setOtp] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Redirect if already signed in
+  useEffect(() => {
+    if (isLoaded && isSignedIn) {
+      navigate('/', { replace: true });
+    }
+  }, [isLoaded, isSignedIn, navigate]);
+
+  // Loading state (prevent login flashing)
+  if (!isLoaded || isSignedIn) {
+    return (
+      <div className="flex min-h-screen w-full items-center justify-center bg-[#020617]">
+        <div className="w-8 h-8 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin"></div>
+      </div>
+    );
+  }
+
+  // Handle Google Sign In
+  const handleGoogleSignIn = async () => {
+    if (!isLoaded) return;
+    try {
+      await signIn.authenticateWithRedirect({
+        strategy: "oauth_google",
+        redirectUrl: "/sso-callback",
+        redirectUrlComplete: "/",
+      });
+    } catch (err: any) {
+      console.error("Google Sign In Error:", err);
+      toast.error(err.errors?.[0]?.message || "Failed to start Google Sign In");
+    }
+  };
+
+  // Handle Email Submission (Step 1)
+  const handleEmailSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!isLoaded || !email) return;
+
+    setIsLoading(true);
+    try {
+      // Start the sign-in process using the email strategy
+      const { supportedFirstFactors } = await signIn.create({
+        identifier: email,
+      });
+
+      // Find the email_code strategy
+      const emailCodeFactor = supportedFirstFactors?.find(
+        (factor) => factor.strategy === "email_code"
+      );
+
+      if (emailCodeFactor) {
+        // Prepare the email code factor (send the email)
+        await signIn.prepareFirstFactor({
+          strategy: "email_code",
+          emailAddressId: emailCodeFactor.emailAddressId,
+        });
+
+        setStep('otp');
+        toast.success("Verification code sent to your email");
+      } else {
+        toast.error("Account not found. Please sign up or check your email.");
+      }
+
+    } catch (err: any) {
+      console.error("Email Submit Error:", err);
+      toast.error(err.errors?.[0]?.message || "Failed to send verification code");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Handle OTP Submission (Step 2)
+  const handleOtpSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!isLoaded || !otp) return;
+
+    setIsLoading(true);
+    try {
+      const result = await signIn.attemptFirstFactor({
+        strategy: "email_code",
+        code: otp,
+      });
+
+      if (result.status === "complete") {
+        await setActive({ session: result.createdSessionId });
+        navigate('/');
+        toast.success("Successfully signed in!");
+      } else {
+        console.log(result);
+        toast.error("Verification incomplete. Please try again.");
+      }
+    } catch (err: any) {
+      console.error("OTP Submit Error:", err);
+      toast.error(err.errors?.[0]?.message || "Invalid verification code");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div className="flex min-h-screen w-full items-center justify-center bg-[#020617] text-white p-4 font-sans relative overflow-hidden">
+      {/* Simple Glow Effect */}
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-blue-500/10 rounded-full blur-[100px] pointer-events-none"></div>
+
+      <div className="w-full max-w-[420px] relative z-10 flex flex-col items-center">
+        {/* Header */}
+        <div className="mb-8 text-center">
+          <h1 className="text-3xl font-bold mb-2">
+            Fee <span className="text-blue-500">Flow</span>
+          </h1>
+          <p className="text-slate-400 text-sm">Frictionless payments for modern institutions.</p>
+        </div>
+
+        {/* Card */}
+        <div className="w-full bg-[#0f172a] border border-slate-800 rounded-2xl p-8 shadow-2xl shadow-black/50">
+          <div className="mb-6">
+            <h2 className="text-xl font-semibold text-white mb-1">
+              {step === 'email' ? 'Welcome Back' : 'Verify Email'}
+            </h2>
+            <p className="text-slate-400 text-sm">
+              {step === 'email'
+                ? 'Please enter your email to access your account.'
+                : `Enter the 6-digit code sent to ${email}`
+              }
+            </p>
+          </div>
+
+          <form onSubmit={step === 'email' ? handleEmailSubmit : handleOtpSubmit} className="flex flex-col gap-5">
+            {step === 'email' && (
+              <div className="flex flex-col gap-2">
+                <label htmlFor="email" className="text-sm font-medium text-slate-300">Email Address</label>
+                <div className="relative">
+                  <input
+                    type="email"
+                    id="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="w-full bg-[#1e293b] border border-slate-700 rounded-lg px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
+                    placeholder="name@company.com"
+                    required
+                    autoFocus
+                  />
+                  <span className="material-symbols-outlined absolute right-3 top-3 text-slate-500 text-[20px]">mail</span>
+                </div>
+              </div>
+            )}
+
+            {step === 'otp' && (
+              <div className="flex flex-col gap-2">
+                <div className="flex justify-between items-center">
+                  <label htmlFor="otp" className="text-sm font-medium text-slate-300">Verification Code</label>
+                  <button
+                    type="button"
+                    onClick={() => setStep('email')}
+                    className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                  >
+                    Change Email
+                  </button>
+                </div>
+                <div className="relative">
+                  <input
+                    type="text"
+                    id="otp"
+                    value={otp}
+                    onChange={(e) => setOtp(e.target.value)}
+                    className="w-full bg-[#1e293b] border border-slate-700 rounded-lg px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all tracking-widest text-center text-lg font-mono"
+                    placeholder="000000"
+                    maxLength={6}
+                    required
+                    autoFocus
+                  />
+                  <span className="material-symbols-outlined absolute right-3 top-3 text-slate-500 text-[20px]">lock</span>
+                </div>
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="w-full bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white font-semibold py-2.5 rounded-lg transition-all shadow-lg shadow-blue-500/20 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              {isLoading ? (
+                <span className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin"></span>
+              ) : (
+                <>
+                  {step === 'email' ? 'Continue with Email' : 'Verify Code'}
+                  <span className="material-symbols-outlined text-[20px]">arrow_forward</span>
+                </>
+              )}
+            </button>
+          </form>
+
+          {/* Divider */}
+          <div className="relative my-6">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-slate-700/50"></div>
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-[#0f172a] px-2 text-slate-500">Or continue with</span>
+            </div>
+          </div>
+
+          {/* Google Button */}
+          <button
+            onClick={handleGoogleSignIn}
+            disabled={isLoading}
+            className="w-full bg-[#1e293b] border border-slate-700 hover:bg-[#334155] text-white font-medium py-2.5 rounded-lg transition-all flex items-center justify-center gap-3 disabled:opacity-50"
+          >
+            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5" />
+            Sign in with Google
+          </button>
+
+          {step === 'otp' && (
+            <div className="mt-6 text-center">
+              <p className="text-slate-400 text-sm">
+                Didn't receive the code?{' '}
+                <button
+                  onClick={handleEmailSubmit}
+                  disabled={isLoading}
+                  className="text-blue-400 hover:text-blue-300 font-medium transition-colors disabled:opacity-50"
+                >
+                  Resend
+                </button>
+              </p>
+            </div>
+          )}
+
+          {step === 'email' && (
+            <div className="mt-6 text-center">
+              <p className="text-slate-400 text-sm">
+                Don't have an account?{' '}
+                <a href="#" className="text-blue-400 hover:text-blue-300 font-medium transition-colors">Get Started</a>
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Footer Security */}
+        <div className="mt-8 flex items-center justify-center gap-6 text-slate-500 text-xs font-medium tracking-wide">
+          <div className="flex items-center gap-1.5">
+            <span className="material-symbols-outlined text-[16px]">verified_user</span>
+            BANK-GRADE SECURITY
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="material-symbols-outlined text-[16px]">bolt</span>
+            REAL-TIME SETTLEMENT
+          </div>
+        </div>
       </div>
     </div>
   );
