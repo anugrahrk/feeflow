@@ -78,40 +78,42 @@ export default function Navbar({ setIsMobileMenuOpen }: NavbarProps) {
                     </label>
                 )}
 
-                <div className="relative">
-                    <button
-                        onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
-                        className="flex items-center justify-center rounded-full size-10 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-primary hover:bg-blue-50 dark:hover:bg-slate-700 transition-colors relative"
-                    >
-                        <span className="material-symbols-outlined text-[20px]">notifications</span>
-                        <span className="absolute top-2 right-2 size-2 bg-red-500 rounded-full border-2 border-white dark:border-[#1a2230]"></span>
-                    </button>
+                {!isSuperAdmin && (
+                    <div className="relative">
+                        <button
+                            onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
+                            className="flex items-center justify-center rounded-full size-10 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-primary hover:bg-blue-50 dark:hover:bg-slate-700 transition-colors relative"
+                        >
+                            <span className="material-symbols-outlined text-[20px]">notifications</span>
+                            <span className="absolute top-2 right-2 size-2 bg-red-500 rounded-full border-2 border-white dark:border-[#1a2230]"></span>
+                        </button>
 
-                    {isNotificationsOpen && (
-                        <div className="absolute right-0 top-12 w-80 bg-white dark:bg-[#1a2230] rounded-xl shadow-lg border border-slate-100 dark:border-slate-800 z-50 overflow-hidden">
-                            <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
-                                <h3 className="font-semibold text-[#111318] dark:text-white">Notifications</h3>
-                                <button className="text-xs text-primary hover:underline">Mark all read</button>
-                            </div>
-                            <div className="max-h-[300px] overflow-y-auto">
-                                {mockNotifications.map((notification) => (
-                                    <div key={notification.id} className="p-4 border-b border-slate-50 dark:border-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer">
-                                        <div className="flex justify-between items-start mb-1">
-                                            <p className="text-sm font-medium text-[#111318] dark:text-white">Payment Received</p>
-                                            <span className="text-xs text-slate-400">{notification.time}</span>
+                        {isNotificationsOpen && (
+                            <div className="absolute right-0 top-12 w-80 bg-white dark:bg-[#1a2230] rounded-xl shadow-lg border border-slate-100 dark:border-slate-800 z-50 overflow-hidden">
+                                <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
+                                    <h3 className="font-semibold text-[#111318] dark:text-white">Notifications</h3>
+                                    <button className="text-xs text-primary hover:underline">Mark all read</button>
+                                </div>
+                                <div className="max-h-[300px] overflow-y-auto">
+                                    {mockNotifications.map((notification) => (
+                                        <div key={notification.id} className="p-4 border-b border-slate-50 dark:border-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer">
+                                            <div className="flex justify-between items-start mb-1">
+                                                <p className="text-sm font-medium text-[#111318] dark:text-white">Payment Received</p>
+                                                <span className="text-xs text-slate-400">{notification.time}</span>
+                                            </div>
+                                            <p className="text-sm text-slate-600 dark:text-slate-400">
+                                                <span className="font-medium text-[#111318] dark:text-white">{notification.student}</span> paid <span className="text-green-600 font-medium">{notification.amount}</span>
+                                            </p>
                                         </div>
-                                        <p className="text-sm text-slate-600 dark:text-slate-400">
-                                            <span className="font-medium text-[#111318] dark:text-white">{notification.student}</span> paid <span className="text-green-600 font-medium">{notification.amount}</span>
-                                        </p>
-                                    </div>
-                                ))}
+                                    ))}
+                                </div>
+                                <div className="p-3 text-center border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-[#1a2230]">
+                                    <button className="text-sm text-primary font-medium hover:underline">See all notifications</button>
+                                </div>
                             </div>
-                            <div className="p-3 text-center border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-[#1a2230]">
-                                <button className="text-sm text-primary font-medium hover:underline">See all notifications</button>
-                            </div>
-                        </div>
-                    )}
-                </div>
+                        )}
+                    </div>
+                )}
 
                 {/* Profile Icon for Super Admin Only - Custom Implementation */}
                 {isSuperAdmin && (
