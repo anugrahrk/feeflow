@@ -54,20 +54,43 @@ export default function Sidebar({ isMobileMenuOpen, setIsMobileMenuOpen }: Sideb
                     <Link to="/" className="text-lg font-bold text-[#111318] dark:text-white leading-tight">Fee Admin</Link>
                 </div>
                 <div className="flex flex-col flex-1 gap-2 p-4 overflow-y-auto">
-                    <Link
-                        to="/"
-                        className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors group ${isActive("/")}`}
-                    >
-                        <span className="material-symbols-outlined">dashboard</span>
-                        <p className="text-sm font-medium leading-normal">Dashboard</p>
-                    </Link>
-                    <Link
-                        to="/s"
-                        className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors group ${isActive("/s")}`}
-                    >
-                        <span className="material-symbols-outlined">school</span>
-                        <p className="text-sm font-medium leading-normal">Students</p>
-                    </Link>
+                    {/* Student View Links */}
+                    {(location.pathname.startsWith('/c') || location.pathname.startsWith('/p')) ? (
+                        <>
+                            <Link
+                                to="/c"
+                                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors group ${isActive("/c")}`}
+                            >
+                                <span className="material-symbols-outlined">home</span>
+                                <p className="text-sm font-medium leading-normal">Home</p>
+                            </Link>
+                            <Link
+                                to="/p"
+                                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors group ${isActive("/p")}`}
+                            >
+                                <span className="material-symbols-outlined">payments</span>
+                                <p className="text-sm font-medium leading-normal">Payment</p>
+                            </Link>
+                        </>
+                    ) : (
+                        /* Admin View Links */
+                        <>
+                            <Link
+                                to="/"
+                                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors group ${isActive("/")}`}
+                            >
+                                <span className="material-symbols-outlined">dashboard</span>
+                                <p className="text-sm font-medium leading-normal">Dashboard</p>
+                            </Link>
+                            <Link
+                                to="/s"
+                                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors group ${isActive("/s")}`}
+                            >
+                                <span className="material-symbols-outlined">school</span>
+                                <p className="text-sm font-medium leading-normal">Students</p>
+                            </Link>
+                        </>
+                    )}
                 </div>
 
                 {/* Custom User Profile Section */}

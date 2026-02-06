@@ -3,7 +3,12 @@ import { Toaster } from 'sonner'
 import Admin from "./pages/admin"
 import Login from "./pages/login"
 import Student from "./pages/student"
+import StudentHome from "./pages/studenthome"
+import Payment from "./pages/payment"
 import ProtectedRoute from './components/ProtectedRoute'
+import DashboardLayout from './components/DashboardLayout'
+
+import SuperAdmin from "./pages/superadmin"
 
 function App() {
   return (
@@ -14,8 +19,17 @@ function App() {
 
         {/* Protected Routes */}
         <Route element={<ProtectedRoute />}>
-          <Route path="/" element={<Admin />} />
-          <Route path="/s" element={<Student />} />
+          {/* Super Admin - No Sidebar */}
+          <Route path="/su" element={<SuperAdmin />} />
+
+          {/* Standard Admin/Student Dashboard - With Sidebar */}
+          <Route element={<DashboardLayout />}>
+            <Route path="/" element={<Admin />} />
+            <Route path="/s" element={<Student />} />
+            {/* Student Portal Routes */}
+            <Route path="/c" element={<StudentHome />} />
+            <Route path="/p" element={<Payment />} />
+          </Route>
         </Route>
 
         {/* Catch all - Redirect to Admin (which is protected) */}
