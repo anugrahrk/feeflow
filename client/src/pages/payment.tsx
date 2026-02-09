@@ -1,4 +1,20 @@
+import { useNavigate } from "react-router-dom";
+import { useUser } from "@clerk/clerk-react";
+
 export default function Payment() {
+    const navigate = useNavigate();
+    const { user } = useUser();
+
+    const handlePay = (amount: number, description: string, dueDate: string) => {
+        navigate(`/pay/${user?.id || 'guest'}`, {
+            state: {
+                amount,
+                description,
+                dueDate
+            }
+        });
+    };
+
     return (
         <div className="p-6 md:p-8">
             <div className="flex justify-between items-center mb-8">
@@ -35,7 +51,10 @@ export default function Payment() {
                         </div>
                         <div className="flex flex-col items-center md:items-end gap-2">
                             <span className="text-xl font-bold text-white">$2,200.00</span>
-                            <button className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-lg font-semibold transition-colors shadow-lg shadow-blue-500/20 w-32">
+                            <button
+                                onClick={() => handlePay(2200, "Tuition Fees - Semester 2", "Oct 15, 2023")}
+                                className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-lg font-semibold transition-colors shadow-lg shadow-blue-500/20 w-32"
+                            >
                                 Pay Now
                             </button>
                         </div>
@@ -56,7 +75,10 @@ export default function Payment() {
                         </div>
                         <div className="flex flex-col items-center md:items-end gap-2">
                             <span className="text-xl font-bold text-white">$250.00</span>
-                            <button className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-lg font-semibold transition-colors shadow-lg shadow-blue-500/20 w-32">
+                            <button
+                                onClick={() => handlePay(250, "Library Membership Fee", "Oct 28, 2023")}
+                                className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-lg font-semibold transition-colors shadow-lg shadow-blue-500/20 w-32"
+                            >
                                 Pay Now
                             </button>
                         </div>
@@ -87,7 +109,10 @@ export default function Payment() {
                         </div>
                         <div className="flex flex-col items-center md:items-end gap-2">
                             <span className="text-xl font-bold text-white">$150.00</span>
-                            <button className="border border-slate-700 hover:border-blue-500 text-slate-300 hover:text-blue-500 px-6 py-2 rounded-lg font-medium transition-colors w-32">
+                            <button
+                                onClick={() => handlePay(150, "Sports & Gymkhana Fee", "Nov 15, 2023")}
+                                className="border border-slate-700 hover:border-blue-500 text-slate-300 hover:text-blue-500 px-6 py-2 rounded-lg font-medium transition-colors w-32"
+                            >
                                 Pay Early
                             </button>
                         </div>
@@ -108,7 +133,10 @@ export default function Payment() {
                         </div>
                         <div className="flex flex-col items-center md:items-end gap-2">
                             <span className="text-xl font-bold text-white">$400.00</span>
-                            <button className="border border-slate-700 hover:border-blue-500 text-slate-300 hover:text-blue-500 px-6 py-2 rounded-lg font-medium transition-colors w-32">
+                            <button
+                                onClick={() => handlePay(400, "Laboratory Maintenance Fee", "Dec 05, 2023")}
+                                className="border border-slate-700 hover:border-blue-500 text-slate-300 hover:text-blue-500 px-6 py-2 rounded-lg font-medium transition-colors w-32"
+                            >
                                 Pay Early
                             </button>
                         </div>

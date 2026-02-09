@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from "react";
-import { useSignIn, useAuth } from "@clerk/clerk-react";
+import { useSignIn, useAuth, useSignUp } from "@clerk/clerk-react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 
 export default function Login() {
-  const { isLoaded, signIn, setActive } = useSignIn();
+const { isLoaded: isSignInLoaded, signIn, setActive } = useSignIn();
+
+// Rename isLoaded from useSignUp to isSignUpLoaded
+const { isLoaded: isSignUpLoaded, signUp } = useSignUp();
   const { isSignedIn } = useAuth();
   const navigate = useNavigate();
 
@@ -15,23 +18,23 @@ export default function Login() {
 
   // Redirect if already signed in
   useEffect(() => {
-    if (isLoaded && isSignedIn) {
+    if (isSignInLoaded && isSignedIn) {
       navigate('/', { replace: true });
     }
-  }, [isLoaded, isSignedIn, navigate]);
+  }, [isSignInLoaded, isSignedIn, navigate]);
 
   // Loading state (prevent login flashing)
-  if (!isLoaded || isSignedIn) {
-    return (
-      <div className="flex min-h-screen w-full items-center justify-center bg-[#020617]">
-        <div className="w-8 h-8 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin"></div>
-      </div>
-    );
-  }
+if (!isSignInLoaded || !isSignUpLoaded || isSignedIn) {
+  return (
+    <div className="flex min-h-screen w-full items-center justify-center bg-[#020617]">
+      <div className="w-8 h-8 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin"></div>
+    </div>
+  );
+}
 
   // Handle Google Sign In
   const handleGoogleSignIn = async () => {
-    if (!isLoaded) return;
+    if (!isSignInLoaded) return;
     try {
       await signIn.authenticateWithRedirect({
         strategy: "oauth_google",
@@ -45,50 +48,75 @@ export default function Login() {
   };
 
   // Handle Email Submission (Step 1)
-  const handleEmailSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!isLoaded || !email) return;
 
-    setIsLoading(true);
+
+const handleEmailSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  if (!isSignInLoaded || !email) return;
+  setIsLoading(true);
+
+  try {
+    // 1. Try to Sign In
     try {
-      // Start the sign-in process using the email strategy
-      const { supportedFirstFactors } = await signIn.create({
-        identifier: email,
-      });
-
-      // Find the email_code strategy
-      const emailCodeFactor = supportedFirstFactors?.find(
-        (factor) => factor.strategy === "email_code"
-      );
-
+      const { supportedFirstFactors } = await signIn.create({ identifier: email });
+      const emailCodeFactor = supportedFirstFactors?.find(f => f.strategy === "email_code");
+      
       if (emailCodeFactor) {
-        // Prepare the email code factor (send the email)
         await signIn.prepareFirstFactor({
           strategy: "email_code",
           emailAddressId: emailCodeFactor.emailAddressId,
         });
-
         setStep('otp');
-        toast.success("Verification code sent to your email");
-      } else {
-        toast.error("Account not found. Please sign up or check your email.");
+        return; // Exit here if user exists
       }
-
     } catch (err: any) {
-      console.error("Email Submit Error:", err);
-      toast.error(err.errors?.[0]?.message || "Failed to send verification code");
-    } finally {
-      setIsLoading(false);
+      // 2. If user doesn't exist, start Sign Up instead
+      if (err.errors?.[0]?.code === "form_identifier_not_found") {
+        // We can safely use signUp because isSignUpLoaded is true
+        await signUp!.create({ emailAddress: email }); 
+        await signUp!.prepareEmailAddressVerification({ strategy: "email_code" });
+        setStep('otp');
+        toast.info("Creating a new account...");
+        return;
+      }
+      throw err;
     }
-  };
+  } catch (err: any) {
+    toast.error(err.errors?.[0]?.message || "Error during authentication");
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   // Handle OTP Submission (Step 2)
-  const handleOtpSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!isLoaded || !otp) return;
+const handleOtpSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  // FIX: Change 'isLoaded' to 'isSignInLoaded'
+  if (!isSignInLoaded || !otp) return; 
 
-    setIsLoading(true);
-    try {
+  setIsLoading(true);
+  try {
+    // 1. Check if we are in a Sign-Up flow (New User)
+    // NOTE: This will now properly trigger when creating a new account
+    if (signUp && signUp.status === "missing_requirements") {
+      const result = await signUp.attemptEmailAddressVerification({
+        code: otp,
+      });
+
+      if (result.status === "complete") {
+        console.log("Session created:", result.createdSessionId); // Check this in Browser Console
+        await setActive({ session: result.createdSessionId });
+        navigate('/');
+        return;
+        } else {
+          // If status is NOT complete, Clerk might be asking for more info (like a username)
+          console.log("Status is:", result.status);
+          console.log("Missing fields:", result.missingFields);
+        }
+    }
+
+    // 2. Check if we are in a Sign-In flow (Existing User)
+    if (signIn && signIn.status === "needs_first_factor") {
       const result = await signIn.attemptFirstFactor({
         strategy: "email_code",
         code: otp,
@@ -96,19 +124,23 @@ export default function Login() {
 
       if (result.status === "complete") {
         await setActive({ session: result.createdSessionId });
+        toast.success("Signed in successfully!");
         navigate('/');
-        toast.success("Successfully signed in!");
-      } else {
-        console.log(result);
-        toast.error("Verification incomplete. Please try again.");
+        return;
       }
-    } catch (err: any) {
-      console.error("OTP Submit Error:", err);
-      toast.error(err.errors?.[0]?.message || "Invalid verification code");
-    } finally {
-      setIsLoading(false);
     }
-  };
+
+    // If we reach here, something is incomplete
+    toast.error("Verification incomplete. Please check the code.");
+
+  } catch (err: any) {
+    console.error("OTP Verification Error:", err);
+    toast.error(err.errors?.[0]?.message || "Invalid verification code");
+  } finally {
+    setIsLoading(false);
+  }
+};
+
 
   return (
     <div className="flex min-h-screen w-full items-center justify-center bg-[#020617] text-white p-4 font-sans relative overflow-hidden">

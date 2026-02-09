@@ -1,7 +1,19 @@
 import { useUser } from "@clerk/clerk-react";
+import { useNavigate } from "react-router-dom";
 
 export default function StudentHome() {
     const { user } = useUser();
+    const navigate = useNavigate();
+
+    const handlePay = () => {
+        navigate(`/pay/${user?.id || 'guest'}`, {
+            state: {
+                amount: 1250,
+                description: "Outstanding Tuition Payment",
+                dueDate: "Immediate"
+            }
+        });
+    };
 
     return (
         <div className="p-6 md:p-8">
@@ -25,12 +37,15 @@ export default function StudentHome() {
                     <div>
                         <p className="text-white font-medium mb-1">Outstanding Tuition Payment</p>
                         <div className="flex items-baseline gap-2">
-                            <span className="text-4xl font-bold text-white">$1,250.00</span>
-                            <span className="text-blue-400 font-medium">USD</span>
+                            <span className="text-4xl font-bold text-white">₹1,250.00</span>
+                            <span className="text-blue-400 font-medium">INR</span>
                         </div>
                         <p className="text-slate-400 text-xs mt-1 uppercase tracking-wider">Payment for October</p>
                     </div>
-                    <button className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-3 rounded-xl font-semibold flex items-center gap-2 transition-colors shadow-lg shadow-blue-500/20">
+                    <button
+                        onClick={handlePay}
+                        className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-3 rounded-xl font-semibold flex items-center gap-2 transition-colors shadow-lg shadow-blue-500/20"
+                    >
                         <span className="material-symbols-outlined">payments</span>
                         Pay Now
                     </button>

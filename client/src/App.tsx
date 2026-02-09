@@ -9,6 +9,7 @@ import ProtectedRoute from './components/ProtectedRoute'
 import DashboardLayout from './components/DashboardLayout'
 
 import SuperAdmin from "./pages/superadmin"
+import Pay from "./pages/Pay"
 
 function App() {
   return (
@@ -30,7 +31,11 @@ function App() {
             <Route path="/c" element={<StudentHome />} />
             <Route path="/p" element={<Payment />} />
           </Route>
+
         </Route>
+
+        {/* Payment Page - Public & Dynamic */}
+        <Route path="/pay/:studentId" element={<Pay />} />
 
         {/* Catch all - Redirect to Admin (which is protected) */}
         <Route path="*" element={<Navigate to="/" replace />} />

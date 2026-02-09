@@ -25,8 +25,8 @@ export default function SuperAdmin() {
     const stats = [
         { label: 'Total Orgs', value: '128', color: 'text-white', bg: 'bg-white/5' },
         { label: 'Active', value: '124', color: 'text-green-500', bg: 'bg-white/5' },
-        { label: 'Pending', value: '4', color: 'text-orange-500', bg: 'bg-white/5' },
-        { label: 'Total Users', value: '15,402', color: 'text-blue-500', bg: 'bg-white/5' },
+        { label: 'Disabled', value: '4', color: 'text-orange-500', bg: 'bg-white/5' },
+        // { label: 'Total Users', value: '15,402', color: 'text-blue-500', bg: 'bg-white/5' },
     ];
 
     const [organizations, setOrganizations] = useState([
@@ -73,7 +73,7 @@ export default function SuperAdmin() {
     const handleModalClose = () => {
         setIsAddOrgModalOpen(false);
         setEditingOrg(null);
-        setFormData({ name: '', owner: '', email: '', phone: '', password: '', confirmPassword: '' });
+        setFormData({ name: '', owner: '', email: '', phone: '' });
     };
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
