@@ -2,35 +2,62 @@ import React, { useState, useEffect } from "react";
 import { useSignIn, useAuth, useSignUp } from "@clerk/clerk-react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
+import { useUserStore } from "../store/userStore";
 
 export default function Login() {
-const { isLoaded: isSignInLoaded, signIn, setActive } = useSignIn();
-
-// Rename isLoaded from useSignUp to isSignUpLoaded
-const { isLoaded: isSignUpLoaded, signUp } = useSignUp();
-  const { isSignedIn } = useAuth();
+  const { isLoaded: isSignInLoaded, signIn, setActive } = useSignIn();
+  const { isLoaded: isSignUpLoaded, signUp } = useSignUp();
+  const { isSignedIn, getToken } = useAuth();
   const navigate = useNavigate();
+  const { fetchProfile } = useUserStore();
 
   const [step, setStep] = useState<'email' | 'otp'>('email');
   const [email, setEmail] = useState("");
   const [otp, setOtp] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isCheckingRole, setIsCheckingRole] = useState(false);
+
+  const checkRoleAndRedirect = async () => {
+    setIsCheckingRole(true);
+    try {
+      const token = await getToken();
+      if (token) {
+        const role = await fetchProfile(token);
+        if (role === 'super_user') {
+          navigate('/su', { replace: true });
+        } else if (role === 'admin') {
+          navigate('/', { replace: true });
+        } else if (role === 'student' || role === 'user') {
+          navigate('/c', { replace: true });
+        } else {
+          navigate('/c', { replace: true });
+        }
+      } else {
+        navigate('/c', { replace: true });
+      }
+    } catch (error) {
+      console.error("Error checking role:", error);
+      navigate('/c', { replace: true });
+    } finally {
+      setIsCheckingRole(false);
+    }
+  };
 
   // Redirect if already signed in
   useEffect(() => {
     if (isSignInLoaded && isSignedIn) {
-      navigate('/', { replace: true });
+      checkRoleAndRedirect();
     }
-  }, [isSignInLoaded, isSignedIn, navigate]);
+  }, [isSignInLoaded, isSignedIn]);
 
   // Loading state (prevent login flashing)
-if (!isSignInLoaded || !isSignUpLoaded || isSignedIn) {
-  return (
-    <div className="flex min-h-screen w-full items-center justify-center bg-[#020617]">
-      <div className="w-8 h-8 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin"></div>
-    </div>
-  );
-}
+  if (!isSignInLoaded || !isSignUpLoaded || (isSignedIn && isCheckingRole)) {
+    return (
+      <div className="flex min-h-screen w-full items-center justify-center bg-[#020617]">
+        <div className="w-8 h-8 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin"></div>
+      </div>
+    );
+  }
 
   // Handle Google Sign In
   const handleGoogleSignIn = async () => {
@@ -39,7 +66,7 @@ if (!isSignInLoaded || !isSignUpLoaded || isSignedIn) {
       await signIn.authenticateWithRedirect({
         strategy: "oauth_google",
         redirectUrl: "/sso-callback",
-        redirectUrlComplete: "/",
+        redirectUrlComplete: "/login",
       });
     } catch (err: any) {
       console.error("Google Sign In Error:", err);
@@ -48,98 +75,93 @@ if (!isSignInLoaded || !isSignUpLoaded || isSignedIn) {
   };
 
   // Handle Email Submission (Step 1)
+  const handleEmailSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!isSignInLoaded || !email) return;
+    setIsLoading(true);
 
-
-const handleEmailSubmit = async (e: React.FormEvent) => {
-  e.preventDefault();
-  if (!isSignInLoaded || !email) return;
-  setIsLoading(true);
-
-  try {
-    // 1. Try to Sign In
     try {
-      const { supportedFirstFactors } = await signIn.create({ identifier: email });
-      const emailCodeFactor = supportedFirstFactors?.find(f => f.strategy === "email_code");
-      
-      if (emailCodeFactor) {
-        await signIn.prepareFirstFactor({
-          strategy: "email_code",
-          emailAddressId: emailCodeFactor.emailAddressId,
-        });
-        setStep('otp');
-        return; // Exit here if user exists
+      // 1. Try to Sign In
+      try {
+        const { supportedFirstFactors } = await signIn.create({ identifier: email });
+        const emailCodeFactor = supportedFirstFactors?.find(f => f.strategy === "email_code");
+
+        if (emailCodeFactor) {
+          await signIn.prepareFirstFactor({
+            strategy: "email_code",
+            emailAddressId: emailCodeFactor.emailAddressId,
+          });
+          setStep('otp');
+          return; // Exit here if user exists
+        }
+      } catch (err: any) {
+        // 2. If user doesn't exist, start Sign Up instead
+        if (err.errors?.[0]?.code === "form_identifier_not_found") {
+          // We can safely use signUp because isSignUpLoaded is true
+          await signUp!.create({ emailAddress: email });
+          await signUp!.prepareEmailAddressVerification({ strategy: "email_code" });
+          setStep('otp');
+          toast.info("Creating a new account...");
+          return;
+        }
+        throw err;
       }
     } catch (err: any) {
-      // 2. If user doesn't exist, start Sign Up instead
-      if (err.errors?.[0]?.code === "form_identifier_not_found") {
-        // We can safely use signUp because isSignUpLoaded is true
-        await signUp!.create({ emailAddress: email }); 
-        await signUp!.prepareEmailAddressVerification({ strategy: "email_code" });
-        setStep('otp');
-        toast.info("Creating a new account...");
-        return;
-      }
-      throw err;
+      toast.error(err.errors?.[0]?.message || "Error during authentication");
+    } finally {
+      setIsLoading(false);
     }
-  } catch (err: any) {
-    toast.error(err.errors?.[0]?.message || "Error during authentication");
-  } finally {
-    setIsLoading(false);
-  }
-};
+  };
 
   // Handle OTP Submission (Step 2)
-const handleOtpSubmit = async (e: React.FormEvent) => {
-  e.preventDefault();
-  // FIX: Change 'isLoaded' to 'isSignInLoaded'
-  if (!isSignInLoaded || !otp) return; 
+  const handleOtpSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!isSignInLoaded || !otp) return;
 
-  setIsLoading(true);
-  try {
-    // 1. Check if we are in a Sign-Up flow (New User)
-    // NOTE: This will now properly trigger when creating a new account
-    if (signUp && signUp.status === "missing_requirements") {
-      const result = await signUp.attemptEmailAddressVerification({
-        code: otp,
-      });
+    setIsLoading(true);
+    try {
+      // 1. Check if we are in a Sign-Up flow (New User)
+      if (signUp && signUp.status === "missing_requirements") {
+        const result = await signUp.attemptEmailAddressVerification({
+          code: otp,
+        });
 
-      if (result.status === "complete") {
-        console.log("Session created:", result.createdSessionId); // Check this in Browser Console
-        await setActive({ session: result.createdSessionId });
-        navigate('/');
-        return;
+        if (result.status === "complete") {
+          console.log("Session created:", result.createdSessionId);
+          await setActive({ session: result.createdSessionId });
+          await checkRoleAndRedirect();
+          return;
         } else {
-          // If status is NOT complete, Clerk might be asking for more info (like a username)
           console.log("Status is:", result.status);
           console.log("Missing fields:", result.missingFields);
         }
-    }
-
-    // 2. Check if we are in a Sign-In flow (Existing User)
-    if (signIn && signIn.status === "needs_first_factor") {
-      const result = await signIn.attemptFirstFactor({
-        strategy: "email_code",
-        code: otp,
-      });
-
-      if (result.status === "complete") {
-        await setActive({ session: result.createdSessionId });
-        toast.success("Signed in successfully!");
-        navigate('/');
-        return;
       }
+
+      // 2. Check if we are in a Sign-In flow (Existing User)
+      if (signIn && signIn.status === "needs_first_factor") {
+        const result = await signIn.attemptFirstFactor({
+          strategy: "email_code",
+          code: otp,
+        });
+
+        if (result.status === "complete") {
+          await setActive({ session: result.createdSessionId });
+          toast.success("Signed in successfully!");
+          await checkRoleAndRedirect();
+          return;
+        }
+      }
+
+      // If we reach here, something is incomplete
+      toast.error("Verification incomplete. Please check the code.");
+
+    } catch (err: any) {
+      console.error("OTP Verification Error:", err);
+      toast.error(err.errors?.[0]?.message || "Invalid verification code");
+    } finally {
+      setIsLoading(false);
     }
-
-    // If we reach here, something is incomplete
-    toast.error("Verification incomplete. Please check the code.");
-
-  } catch (err: any) {
-    console.error("OTP Verification Error:", err);
-    toast.error(err.errors?.[0]?.message || "Invalid verification code");
-  } finally {
-    setIsLoading(false);
-  }
-};
+  };
 
 
   return (

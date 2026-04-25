@@ -1,40 +1,35 @@
 {
-  "name": "server",
+  "name": "feepay_server",
   "version": "1.0.0",
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
-    "build": "tsc",
-    "start": "node dist/index.js",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "seed": "tsx src/scripts/seed.ts"
+    "build": "tsc",
+    "dev": "node --watch ./dist/index.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "@clerk/clerk-sdk-node": "^4.13.23",
-    "bcryptjs": "^3.0.3",
-    "cookie-parser": "^1.4.7",
+    "@clerk/express": "^1.7.69",
     "cors": "^2.8.6",
     "dotenv": "^17.2.4",
     "express": "^5.2.1",
+    "express-rate-limit": "^8.2.1",
     "mongoose": "^9.1.6",
-    "node-cron": "^4.2.1",
     "nodemailer": "^8.0.1",
-    "pdfkit": "^0.17.2",
     "pdfkit-table": "^0.1.99",
     "razorpay": "^2.9.6",
-    "socket.io": "^4.8.3",
-    "svix": "^1.84.1"
+    "socket.io": "^4.8.3"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
+    "@types/express-rate-limit": "^5.1.3",
     "@types/node": "^25.2.1",
     "@types/nodemailer": "^7.0.9",
-    "@types/pdfkit": "^0.17.4",
-    "tsx": "^4.21.0"
+    "@types/pdfkit": "^0.17.4"
   }
 }

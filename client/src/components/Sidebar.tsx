@@ -48,10 +48,12 @@ export default function Sidebar({ isMobileMenuOpen, setIsMobileMenuOpen }: Sideb
                 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
             `}>
                 <div className="flex items-center gap-3 px-6 py-6 border-b border-gray-100 dark:border-gray-800">
-                    <div className="flex items-center justify-center bg-primary rounded-lg size-10 shrink-0">
-                        <span className="material-symbols-outlined text-white text-[24px]">payments</span>
+                    <div className="flex items-center gap-2">
+                        <img src="/feeflow-logo.png" alt="FeeFlow Logo" className="w-10 h-10 object-contain rounded-lg" />
+                        <h2 className="text-[#111318] dark:text-white text-xl font-bold leading-tight tracking-[-0.015em]">
+                            FeeFlow
+                        </h2>
                     </div>
-                    <Link to="/" className="text-lg font-bold text-[#111318] dark:text-white leading-tight">Fee Admin</Link>
                 </div>
                 <div className="flex flex-col flex-1 gap-2 p-4 overflow-y-auto">
                     {/* Student View Links */}

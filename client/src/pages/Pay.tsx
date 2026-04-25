@@ -17,6 +17,25 @@ interface PaymentState {
     dueDate: string;
 }
 
+interface PaymentDetails {
+    student: {
+        name: string;
+        amount: number;
+        id: string;
+    };
+    organization: {
+        _id: string;
+        orgName: string;
+        email: string;
+        mobileNumber: string;
+        ownerName?: string;
+    };
+    dates: {
+        dueDate: string;
+        validDate: string;
+    };
+}
+
 export default function Pay() {
     const { studentId } = useParams();
     const { state } = useLocation();
@@ -28,6 +47,7 @@ export default function Pay() {
     const [txDetails, setTxDetails] = useState<{ id: string; amount: number; date: string } | null>(null);
     const [checkingStatus, setCheckingStatus] = useState(true);
     const [redirectSeconds, setRedirectSeconds] = useState(5);
+    const [paymentData, setPaymentData] = useState<PaymentDetails | null>(null);
 
     // Default values if accessing directly without state (or just for testing)
     // Priority: State > Search Params > Default
@@ -38,6 +58,17 @@ export default function Pay() {
     };
 
     useEffect(() => {
+        const fetchPaymentDetails = async () => {
+            if (!studentId) return;
+            try {
+                const { data } = await axios.get(`${import.meta.env.VITE_API_URL}/payments/payment-details/${studentId}`);
+                setPaymentData(data);
+            } catch (error) {
+                console.error("Error fetching payment details:", error);
+                toast.error("Failed to load payment details.");
+            }
+        };
+
         const checkPaymentStatus = async () => {
             if (!studentId) {
                 setCheckingStatus(false);
@@ -50,7 +81,7 @@ export default function Pay() {
                     setStatus('already_paid');
                     setTxDetails({
                         id: "PREV-PAID", // Or get from data if available
-                        amount: paymentDetails.amount,
+                        amount: paymentDetails.amount, // Placeholder until paymentData loads
                         date: new Date(data.paymentDate).toLocaleString()
                     });
 
@@ -75,6 +106,7 @@ export default function Pay() {
             }
         };
 
+        fetchPaymentDetails();
         checkPaymentStatus();
     }, [studentId, navigate, paymentDetails.amount]);
 
@@ -96,6 +128,11 @@ export default function Pay() {
             return;
         }
 
+        if (!paymentData) {
+            toast.error("Payment details not loaded. Please refresh.");
+            return;
+        }
+
         setLoading(true);
 
         try {
@@ -103,7 +140,7 @@ export default function Pay() {
             const { data: orderData } = await axios.post(`${import.meta.env.VITE_API_URL}/payments/create-order`, {
                 // studentId: studentId || user?.id || 'guest', // Fallback to guest if no ID
                 studentId: studentId,
-                amount: paymentDetails.amount
+                amount: paymentData.student.amount // Use DB amount
             });
 
             if (!orderData || !orderData.id) {
@@ -122,7 +159,7 @@ export default function Pay() {
                 key: import.meta.env.VITE_RAZORPAY_KEY_ID || import.meta.env.RAZORPAY_ID,
                 amount: orderData.amount,
                 currency: orderData.currency,
-                name: "Global Institute",
+                name: paymentData.organization.orgName || "Global Institute",
                 description: paymentDetails.description,
                 image: "https://your-logo-url.com/logo.png",
                 order_id: orderData.id, // Pass the order ID created in backend
@@ -134,15 +171,15 @@ export default function Pay() {
                             razorpay_payment_id: response.razorpay_payment_id,
                             razorpay_signature: response.razorpay_signature,
                             studentId: studentId,
-                            amount: paymentDetails.amount,
-                            organizationId: "org_default" // TODO: Get this from context if available
+                            amount: paymentData.student.amount,
+                            organizationId: paymentData.organization._id
                         });
 
                         if (verifyRes.data.status === 'success') {
                             setStatus('success');
                             setTxDetails({
                                 id: response.razorpay_payment_id,
-                                amount: paymentDetails.amount,
+                                amount: paymentData.student.amount,
                                 date: new Date().toLocaleString()
                             });
                             toast.success(`Payment Successful! Transaction ID: ${response.razorpay_payment_id}`);
@@ -157,12 +194,12 @@ export default function Pay() {
                     }
                 },
                 prefill: {
-                    name: user?.fullName || "Student Name",
-                    email: user?.primaryEmailAddress?.emailAddress || "student@example.com",
-                    contact: "9999999999"
+                    name: paymentData.student.name || user?.fullName || "Student Name",
+                    email: user?.primaryEmailAddress?.emailAddress || "student@example.com", // Or from student DB
+                    contact: paymentData.organization.mobileNumber || "9999999999"
                 },
                 notes: {
-                    address: "Global Institute of Technology"
+                    address: paymentData.organization.orgName
                 },
                 theme: {
                     color: "#3b82f6"
@@ -374,65 +411,73 @@ export default function Pay() {
                         <div className="size-8 bg-blue-600 rounded-lg flex items-center justify-center">
                             <span className="material-symbols-outlined text-white text-sm">school</span>
                         </div>
-                        <span className="font-semibold text-sm">Global Institute</span>
+                        <span className="font-semibold text-sm">{paymentData?.organization.orgName || "Global Institute"}</span>
                     </div>
                 </div>
 
                 {/* content */}
                 <div className="p-8">
-                    <div className="flex justify-between mb-8 text-sm">
-                        <div>
-                            <h3 className="text-slate-400 font-semibold mb-1 uppercase tracking-wider text-xs">Student Information</h3>
-                            <p className="text-xl font-bold">{user?.fullName || "Student Name"}</p>
-                            <p className="text-slate-400">ID: {studentId ? `STU-${studentId}` : `STU-${new Date().getFullYear()}-0812`}</p>
+                    {!paymentData ? (
+                        <div className="flex justify-center p-10">
+                            <div className="w-8 h-8 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin"></div>
                         </div>
-                        <div className="text-right">
-                            <h3 className="text-slate-400 font-semibold mb-1 uppercase tracking-wider text-xs">Billed By</h3>
-                            <p className="font-medium">Global Institute of Technology</p>
-                            <p className="text-slate-400">123 University Avenue, Science Park</p>
-                            <p className="text-slate-400">California, US</p>
-                        </div>
-                    </div>
-
-                    {/* Payment Card */}
-                    <div className="bg-[#243042] rounded-xl p-6 border border-slate-700 mb-8">
-                        <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-                            <div>
-                                <h3 className="text-lg font-bold text-white mb-1">{paymentDetails.description}</h3>
-                                <p className="text-blue-400 font-medium text-sm">Due by {paymentDetails.dueDate}</p>
-                                <div className="mt-2 flex items-baseline gap-1">
-                                    <span className="text-4xl font-bold text-white">₹{paymentDetails.amount.toFixed(2)}</span>
-                                    <span className="text-slate-400 text-sm">INR</span>
+                    ) : (
+                        <>
+                            <div className="flex justify-between mb-8 text-sm">
+                                <div>
+                                    <h3 className="text-slate-400 font-semibold mb-1 uppercase tracking-wider text-xs">Student Information</h3>
+                                    <p className="text-xl font-bold">{paymentData.student.name || user?.fullName || "Student Name"}</p>
+                                    <p className="text-slate-400">ID: {studentId ? `STU-${studentId.slice(-6).toUpperCase()}` : `STU-${new Date().getFullYear()}-0812`}</p>
+                                </div>
+                                <div className="text-right">
+                                    <h3 className="text-slate-400 font-semibold mb-1 uppercase tracking-wider text-xs">Billed By</h3>
+                                    <p className="font-medium">{paymentData.organization.orgName}</p>
+                                    <p className="text-slate-400">{paymentData.organization.email}</p>
+                                    <p className="text-slate-400">{paymentData.organization.mobileNumber || "Contact details unavailable"}</p>
                                 </div>
                             </div>
-                        </div>
-                    </div>
 
-                    {/* Additional Details */}
-                    <div className="grid grid-cols-2 gap-4 mb-8">
-                        <div className="bg-[#0f1115] p-3 rounded-lg border border-slate-800">
-                            <p className="text-slate-400 text-xs font-bold uppercase mb-1">Due Date</p>
-                            <p className="text-white font-medium text-sm">October 31, 2024</p>
-                        </div>
-                        <div className="bg-[#0f1115] p-3 rounded-lg border border-slate-800">
-                            <p className="text-slate-400 text-xs font-bold uppercase mb-1">Valid Till</p>
-                            <p className="text-white font-medium text-sm">November 30, 2024</p>
-                        </div>
-                    </div>
+                            {/* Payment Card */}
+                            <div className="bg-[#243042] rounded-xl p-6 border border-slate-700 mb-8">
+                                <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+                                    <div>
+                                        <h3 className="text-lg font-bold text-white mb-1">{paymentDetails.description}</h3>
+                                        <p className="text-blue-400 font-medium text-sm">Due by {paymentData.dates.dueDate}</p>
+                                        <div className="mt-2 flex items-baseline gap-1">
+                                            <span className="text-4xl font-bold text-white">₹{paymentData.student.amount.toFixed(2)}</span>
+                                            <span className="text-slate-400 text-sm">INR</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
 
-                    {/* Pay Button */}
-                    <button
-                        onClick={handlePayment}
-                        disabled={loading}
-                        className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-xl transition-all shadow-lg shadow-blue-600/20 flex items-center justify-center gap-2 text-lg"
-                    >
-                        {loading ? 'Processing...' : 'Pay Now with Razorpay'}
-                        {!loading && <span className="material-symbols-outlined">arrow_forward</span>}
-                    </button>
+                            {/* Additional Details */}
+                            <div className="grid grid-cols-2 gap-4 mb-8">
+                                <div className="bg-[#0f1115] p-3 rounded-lg border border-slate-800">
+                                    <p className="text-slate-400 text-xs font-bold uppercase mb-1">Due Date</p>
+                                    <p className="text-white font-medium text-sm">{paymentData.dates.dueDate}</p>
+                                </div>
+                                <div className="bg-[#0f1115] p-3 rounded-lg border border-slate-800">
+                                    <p className="text-slate-400 text-xs font-bold uppercase mb-1">Valid Till</p>
+                                    <p className="text-white font-medium text-sm">{paymentData.dates.validDate}</p>
+                                </div>
+                            </div>
 
-                    <p className="text-center text-slate-500 text-xs mt-4">
-                        Securely processed by Razorpay. Transaction fees may apply.
-                    </p>
+                            {/* Pay Button */}
+                            <button
+                                onClick={handlePayment}
+                                disabled={loading}
+                                className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-xl transition-all shadow-lg shadow-blue-600/20 flex items-center justify-center gap-2 text-lg"
+                            >
+                                {loading ? 'Processing...' : 'Pay Now with Razorpay'}
+                                {!loading && <span className="material-symbols-outlined">arrow_forward</span>}
+                            </button>
+
+                            <p className="text-center text-slate-500 text-xs mt-4">
+                                Securely processed by Razorpay. Transaction fees may apply.
+                            </p>
+                        </>
+                    )}
                 </div>
             </div>
         </div>

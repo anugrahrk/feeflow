@@ -11,12 +11,15 @@ import DashboardLayout from './components/DashboardLayout'
 import SuperAdmin from "./pages/superadmin"
 import Pay from "./pages/Pay"
 
+import SSOCallback from './components/SSOCallback'
+
 function App() {
   return (
     <>
       <Toaster position="top-right" richColors />
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/sso-callback" element={<SSOCallback />} />
 
         {/* Protected Routes */}
         <Route element={<ProtectedRoute />}>

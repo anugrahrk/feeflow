@@ -26,11 +26,7 @@ export default function Navbar({ setIsMobileMenuOpen }: NavbarProps) {
         { id: 5, student: "Eva Davis", amount: "$2200", time: "1 day ago" },
     ];
 
-    const getTitle = () => {
-        if (isSuperAdmin) return 'Super Admin';
-        if (isStudentPage) return 'Student Portal';
-        return 'Admin Dashboard';
-    };
+
 
     // Close profile menu when clicking outside
     useEffect(() => {
@@ -47,7 +43,13 @@ export default function Navbar({ setIsMobileMenuOpen }: NavbarProps) {
 
     return (
         <header className="flex items-center justify-between whitespace-nowrap border-b border-[#e5e7eb] dark:border-gray-800 bg-white dark:bg-[#1a2230] px-4 md:px-8 py-4 shrink-0">
-            <div className="flex items-center gap-4">
+           {isSuperAdmin? <div className="flex items-center gap-2">
+                        <img src="/feeflow-logo.png" alt="FeeFlow Logo" className="w-10 h-10 object-contain rounded-lg" />
+                        <h2 className="text-[#111318] dark:text-white text-xl font-bold leading-tight tracking-[-0.015em]">
+                            FeeFlow
+                        </h2>
+                    </div>:null}
+            <div className="flex items-center gap-3">
                 {setIsMobileMenuOpen && (
                     <button
                         onClick={() => setIsMobileMenuOpen(true)}
@@ -56,27 +58,17 @@ export default function Navbar({ setIsMobileMenuOpen }: NavbarProps) {
                         <span className="material-symbols-outlined">menu</span>
                     </button>
                 )}
-                {/* Logo or Icon for Super Admin */}
-                {isSuperAdmin && (
-                    <div className="flex items-center justify-center size-8 bg-blue-600 rounded-lg mr-2">
-                        <span className="material-symbols-outlined text-white text-[20px]">security</span>
+
+                {!isStudentPage ? null : (
+                    <div className="flex items-center gap-2">
+                        <img src="/feeflow-logo.png" alt="FeeFlow Logo" className="w-13 h-13 object-contain rounded-lg" />
+                        <h2 className="text-[#111318] dark:text-white text-xl font-bold leading-tight tracking-[-0.015em]">
+                            FeeFlow
+                        </h2>
                     </div>
                 )}
-                <h2 className="text-[#111318] dark:text-white text-xl font-bold leading-tight tracking-[-0.015em]">
-                    {getTitle()}
-                </h2>
             </div>
             <div className="flex items-center gap-6">
-                {!isStudentPage && (
-                    <label className="hidden md:flex flex-col min-w-64 h-10">
-                        <div className="flex w-full flex-1 items-stretch rounded-lg h-full relative group">
-                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400 group-focus-within:text-primary transition-colors">
-                                <span className="material-symbols-outlined text-[20px]">search</span>
-                            </div>
-                            <input className="form-input block w-full rounded-lg border-none bg-slate-100 dark:bg-slate-800 dark:text-white pl-10 pr-3 py-2 text-sm placeholder-slate-400 focus:ring-2 focus:ring-primary/50 transition-all" placeholder={isSuperAdmin ? "Search organizations..." : "Search student or transaction ID..."} />
-                        </div>
-                    </label>
-                )}
 
                 {!isSuperAdmin && (
                     <div className="relative">

@@ -5,7 +5,7 @@ import Organization from '../models/Organization.js';
 export const createOrganization = async (req: Request, res: Response) => {
     try {
         const { orgName, ownerName, mobileNumber, email } = req.body;
-
+        console.log(req.role)
         // Check if org with email exists
         const existingOrg = await Organization.findOne({ email });
         if (existingOrg) {
@@ -25,8 +25,6 @@ export const createOrganization = async (req: Request, res: Response) => {
         res.status(500).json({ message: 'Error creating organization', error });
     }
 };
-
-// Get Organization Stats
 export const getOrganizationStats = async (req: Request, res: Response) => {
     try {
         const total = await Organization.countDocuments();
@@ -50,7 +48,9 @@ export const getAllOrganizations = async (req: Request, res: Response) => {
         if (search) {
             query.$or = [
                 { orgName: { $regex: search, $options: 'i' } },
-                { email: { $regex: search, $options: 'i' } }
+                { email: { $regex: search, $options: 'i' } },
+                { ownerName: { $regex: search, $options: 'i' } },
+                { mobileNumber: { $regex: search, $options: 'i' } }
             ];
         }
 

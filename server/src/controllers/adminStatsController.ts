@@ -6,7 +6,7 @@ import mongoose from 'mongoose';
 // Monthly Stats
 export const getMonthlyStats = async (req: Request, res: Response) => {
     try {
-        const organizationId = req.user?.organizationId;
+        const organizationId = req.organizationId;
         if (!organizationId) return res.status(403).json({ message: 'Organization ID missing' });
 
         const now = new Date();
@@ -109,7 +109,7 @@ export const getMonthlyStats = async (req: Request, res: Response) => {
 // 6 Month Chart Data
 export const getChartData = async (req: Request, res: Response) => {
     try {
-        const organizationId = req.user?.organizationId;
+        const organizationId = req.organizationId;
         if (!organizationId) return res.status(403).json({ message: 'Organization ID missing' });
 
         const sixMonthsAgo = new Date();
@@ -158,7 +158,7 @@ export const getChartData = async (req: Request, res: Response) => {
 // Transactions History
 export const getTransactionHistory = async (req: Request, res: Response) => {
     try {
-        const organizationId = req.user?.organizationId;
+        const organizationId = req.organizationId;
         if (!organizationId) return res.status(403).json({ message: 'Organization ID missing' });
 
         const page = parseInt(req.query.page as string) || 1;
