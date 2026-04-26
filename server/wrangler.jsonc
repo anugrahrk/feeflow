@@ -1,0 +1,21 @@
+{
+	"name": "feepay-server",
+	"main": "src/index.ts",
+	"compatibility_date": "2026-04-26",
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
+	"vars": {
+		"CLIENT_URI": "https://login-feeflow-seven.vercel.app/"
+	},
+	"r2_buckets": [
+		{
+			"bucket_name": "feepay-uploads",
+			"binding": "feepay_uploads",
+			"remote": true
+		}
+	],
+	"alias": {
+		"iconv-lite": "./src/stubs/iconv-lite-stub.js"
+	}
+}

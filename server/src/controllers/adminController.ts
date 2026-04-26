@@ -166,63 +166,63 @@ export const sendPaymentLinkEmail = async (req: Request, res: Response) => {
 };
 
 // Generate PDF Report
-// Generate PDF Report
 export const generatePDFReport = async (req: Request, res: Response) => {
     try {
         const organizationId = req.organizationId;
         const students = await Student.find({ organizationId });
 
-        const uploadDir = path.join(process.cwd(), 'upload');
-        if (!fs.existsSync(uploadDir)) {
-            fs.mkdirSync(uploadDir, { recursive: true });
-        }
-
         const fileName = `output_${organizationId}.pdf`;
-        const filePath = path.join(uploadDir, fileName);
 
+        // 1. Setup PDF Kit with a buffer stream
         const doc = new PDFDocument({ margin: 30, size: 'A4' });
-        const writeStream = fs.createWriteStream(filePath);
+        const chunks: Buffer[] = [];
+        
+        doc.on('data', (chunk) => chunks.push(chunk));
+        
+        const pdfReady = new Promise<Buffer>((resolve, reject) => {
+            doc.on('end', () => resolve(Buffer.concat(chunks)));
+            doc.on('error', reject);
+        });
 
-        doc.pipe(writeStream);
-
+        // 2. Compose the PDF
         doc.fontSize(18).text('Student Report', { align: 'center' });
         doc.moveDown();
 
         const table = {
-            title: "All Students",
-            subtitle: `Total Students: ${students.length}`,
-            headers: ["Name", "Email", "Mobile", "Amount", "Due Date", "Status"],
+            title: "Student Fees Report",
+            headers: ["Name", "Email", "Amount", "Status"],
             rows: students.map((s: any) => [
                 s.studentName,
                 s.email || '-',
-                s.mobileNumber || '-',
                 s.amount.toString(),
-                new Date(s.feeRecurringDate).toLocaleDateString(),
                 s.isEnabled ? 'Active' : 'Disabled'
             ]),
         };
 
-        await doc.table(table as any, {
-            width: 500,
-        });
-
+        await doc.table(table as any, { width: 500 });
         doc.end();
 
-        writeStream.on('finish', () => {
-            const downloadUrl = `${req.protocol}://${req.get('host')}/upload/${fileName}`;
-            res.json({ message: 'PDF generated successfully', downloadUrl });
+        // 3. Wait for PDF to finish and upload to R2
+        const pdfBuffer = await pdfReady;
+        const bucket = (process.env as any).feepay_uploads;
+
+        await bucket.put(fileName, pdfBuffer, {
+            httpMetadata: { contentType: 'application/pdf' }
         });
 
-        writeStream.on('error', (err) => {
-            console.error('Error writing PDF file:', err);
-            res.status(500).json({ message: 'Error generating PDF file', error: err });
+        // 4. Return the download URL 
+        // This hits the app.get('/upload/:filename') route in your index.ts
+        const downloadUrl = `${req.protocol}://${req.get('host')}/upload/${fileName}`;
+        
+        res.json({ 
+            message: 'Report generated. It will be auto-deleted by R2 in 24 hours.', 
+            downloadUrl 
         });
 
     } catch (error) {
         res.status(500).json({ message: 'Error generating PDF', error });
     }
 };
-
 // --- Dashboard Stats ---
 
 // Get Monthly Stats
