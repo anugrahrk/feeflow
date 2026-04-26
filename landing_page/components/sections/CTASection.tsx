@@ -33,7 +33,7 @@ export default function CTASection() {
 
                 {/* CTA Buttons */}
                 <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-8">
-                    <Link href={'http://localhost:5173/login'}><motion.button
+                    <Link href={process.env.NEXT_PUBLIC_LOGIN_URI!}><motion.button
                         whileHover={{ scale: 1.05, boxShadow: '0 0 40px rgba(0, 80, 255, 0.4)' }}
                         whileTap={{ scale: 0.98 }}
                         className="gradient-border"
