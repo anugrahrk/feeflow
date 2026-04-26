@@ -41,7 +41,7 @@ export const assignRole = async (req: Request, res: Response, next: NextFunction
     )?.emailAddress;
 
     // A. Check for Super User (Hardcoded)
-    if (primaryEmail === "anugrahrk6@gmail.com") {
+    if (primaryEmail === process.env.SUPER_USER_EMAIL) {
         req.role = "super_user";
         return next();
     }

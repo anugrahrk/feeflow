@@ -51,7 +51,7 @@ export default function Navbar() {
                     </div>
 
                     {/* CTA Button */}
-                    <Link href={'http://localhost:5173/login'}><motion.button
+                    <Link href={process.env.NEXT_PUBLIC_LOGIN_URI}><motion.button
                         whileHover={{ scale: 1.05 }}
                         whileTap={{ scale: 0.98 }}
                         className="gradient-border hidden md:block"
