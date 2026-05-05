@@ -6,7 +6,7 @@
 		"nodejs_compat"
 	],
 	"vars": {
-		"CLIENT_URI": "https://login-feeflow-seven.vercel.app/"
+		"CLIENT_URI": "https://app-feeflow-seven.vercel.app/"
 	},
 	"r2_buckets": [
 		{

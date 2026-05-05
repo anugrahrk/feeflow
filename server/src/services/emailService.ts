@@ -1,6 +1,5 @@
 import nodemailer from 'nodemailer';
 
-// Helper function to get the transporter only when needed
 const getTransporter = () => {
     return nodemailer.createTransport({
         service: 'gmail',
@@ -12,7 +11,6 @@ const getTransporter = () => {
 };
 
 export const sendPaymentLink = async (email: string, name: string, link: string) => {
-    // 1. Move the transporter creation INSIDE the function
     const transporter = getTransporter();
 
     const mailOptions = {
@@ -36,7 +34,6 @@ export const sendPaymentLink = async (email: string, name: string, link: string)
 };
 
 export const sendReminder = async (email: string, name: string, amount: number) => {
-    // 2. Do the same here
     const transporter = getTransporter();
 
     const mailOptions = {
@@ -49,10 +46,11 @@ export const sendReminder = async (email: string, name: string, amount: number) 
             <p>Please pay as soon as possible.</p>
         `
     };
+
     try {
         await transporter.sendMail(mailOptions);
         console.log(`Reminder sent to ${email}`);
     } catch (error) {
         console.error('Error sending reminder:', error);
     }
-}
+};

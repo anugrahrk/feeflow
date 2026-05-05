@@ -1,7 +1,7 @@
-import { Request, Response, NextFunction, RequestHandler } from 'express';
+import { Request, Response, NextFunction } from 'express';
 import { clerkClient, getAuth } from '@clerk/express';
 import { User } from '@clerk/backend';
-import OrgModel from '../models/Organization.js'; // Your Mongoose User model
+import OrgModel from '../models/Organization.js';
 import mongoose from 'mongoose';
 
 declare global {
@@ -14,72 +14,84 @@ declare global {
     }
 }
 
-
-// 1. Verify Token: Checks if the session is valid
+// 1. Verify Token
 export const verifyToken = async (req: Request, res: Response, next: NextFunction) => {
     const { userId } = getAuth(req);
 
     if (!userId) {
-        return res.status(401).json({ error: "No valid session found." });
+        return res.status(401).json({ error: 'No valid session found.' });
     }
 
     try {
         const user = await clerkClient.users.getUser(userId);
-        req.clerkUser = user; // Store Clerk user for the next function
+        req.clerkUser = user;
         next();
     } catch (error) {
-        res.status(401).json({ error: "Invalid token or user not found." });
+        console.error('Clerk getUser error:', error);
+        res.status(401).json({ error: 'Invalid token or user not found.' });
     }
 };
 
-// 2. Assign Roles: Logic for super_user -> DB lookup -> default user
+// 2. Assign Role
 export const assignRole = async (req: Request, res: Response, next: NextFunction) => {
-    if (!req.clerkUser) return res.status(500).send("User missing from request");
+    if (!req.clerkUser) {
+        return res.status(500).json({ error: 'User missing from request.' });
+    }
 
     const primaryEmail = req.clerkUser.emailAddresses.find(
         (e) => e.id === req.clerkUser?.primaryEmailAddressId
     )?.emailAddress;
 
-    // A. Check for Super User (Hardcoded)
+    if (!primaryEmail) {
+        return res.status(400).json({ error: 'No primary email on Clerk account.' });
+    }
+
+    // Super user check
     if (primaryEmail === process.env.SUPER_USER_EMAIL) {
-        req.role = "super_user";
+        req.role = 'super_user';
         return next();
     }
 
-    // B. Check Database for Admin or existing User
+    // DB lookup for admin
     try {
         const dbUser = await OrgModel.findOne({ email: primaryEmail });
-        if (dbUser?.isEnabled == false) {
-            return res.status(403).json({ error: "Your account has been disabled." });
-        } else {
-            if (dbUser) {
-                req.role = "admin";
-            }
-            else {
-                req.role = "user";
-            }
+
+        if (dbUser?.isEnabled === false) {
+            return res.status(403).json({ error: 'Your account has been disabled.' });
         }
+
+        req.role = dbUser ? 'admin' : 'user';
     } catch (error) {
-        req.role = "user"; // Fallback on DB error
+        console.error('DB error in assignRole:', error);
+        req.role = 'user';
     }
+
     next();
 };
 
-// 3. Authorize: A helper function to lock routes based on the assigned role
+// 3. Require Role
 export const requireRole = (role: 'super_user' | 'admin' | 'user') => {
     return async (req: Request, res: Response, next: NextFunction) => {
-        if (req.role === 'super_user') return next(); // Super user bypasses all
+        if (req.role === 'super_user') return next();
+
         if (req.role !== role) {
             return res.status(403).json({ error: `Requires ${role} permissions.` });
         }
-        if (req.role == "admin") {
-            const primaryEmail = req?.clerkUser?.emailAddresses.find(
-                (e) => e.id === req?.clerkUser?.primaryEmailAddressId
+
+        if (req.role === 'admin') {
+            const primaryEmail = req.clerkUser?.emailAddresses.find(
+                (e) => e.id === req.clerkUser?.primaryEmailAddressId
             )?.emailAddress;
-            const dbUser = await OrgModel.findOne({ email: primaryEmail });
-            req.organizationId = dbUser?._id;
+
+            try {
+                const dbUser = await OrgModel.findOne({ email: primaryEmail });
+                req.organizationId = dbUser?._id;
+            } catch (error) {
+                console.error('DB error in requireRole:', error);
+                return res.status(500).json({ error: 'Failed to load organization.' });
+            }
         }
+
         next();
     };
 };
-
