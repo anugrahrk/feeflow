@@ -10,6 +10,7 @@ export default function Navbar({ setIsMobileMenuOpen }: NavbarProps) {
     const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
     const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
     const profileMenuRef = useRef<HTMLDivElement>(null);
+    const notificationMenuRef = useRef<HTMLDivElement>(null);
 
     const location = useLocation();
     const { user } = useUser();
@@ -28,11 +29,14 @@ export default function Navbar({ setIsMobileMenuOpen }: NavbarProps) {
 
 
 
-    // Close profile menu when clicking outside
+    // Close profile and notification menus when clicking outside
     useEffect(() => {
         function handleClickOutside(event: MouseEvent) {
             if (profileMenuRef.current && !profileMenuRef.current.contains(event.target as Node)) {
                 setIsProfileMenuOpen(false);
+            }
+            if (notificationMenuRef.current && !notificationMenuRef.current.contains(event.target as Node)) {
+                setIsNotificationsOpen(false);
             }
         }
         document.addEventListener("mousedown", handleClickOutside);
@@ -43,12 +47,6 @@ export default function Navbar({ setIsMobileMenuOpen }: NavbarProps) {
 
     return (
         <header className="flex items-center justify-between whitespace-nowrap border-b border-[#e5e7eb] dark:border-gray-800 bg-white dark:bg-[#1a2230] px-4 md:px-8 py-4 shrink-0">
-           {isSuperAdmin? <div className="flex items-center gap-2">
-                        <img src="/feeflow-logo.png" alt="FeeFlow Logo" className="w-10 h-10 object-contain rounded-lg" />
-                        <h2 className="text-[#111318] dark:text-white text-xl font-bold leading-tight tracking-[-0.015em]">
-                            FeeFlow
-                        </h2>
-                    </div>:null}
             <div className="flex items-center gap-3">
                 {setIsMobileMenuOpen && (
                     <button
@@ -59,21 +57,22 @@ export default function Navbar({ setIsMobileMenuOpen }: NavbarProps) {
                     </button>
                 )}
 
-                {!isStudentPage ? null : (
-                    <div className="flex items-center gap-2">
-                        <img src="/feeflow-logo.png" alt="FeeFlow Logo" className="w-10 h-10 object-contain rounded-lg" />
-                        <h2 className="text-[#111318] dark:text-white text-xl font-bold leading-tight tracking-[-0.015em]">
-                            FeeFlow
-                        </h2>
-                    </div>
-                )}
+                <div className={`flex items-center gap-2 ${(!isStudentPage && !isSuperAdmin) ? 'md:hidden' : ''}`}>
+                    <img src="/feeflow-logo.png" alt="FeeFlow Logo" className="w-10 h-10 object-contain rounded-lg" />
+                    <h2 className="text-[#111318] dark:text-white text-xl font-bold leading-tight tracking-[-0.015em]">
+                        FeeFlow
+                    </h2>
+                </div>
             </div>
             <div className="flex items-center gap-6">
 
                 {!isSuperAdmin && (
-                    <div className="relative">
+                    <div className="relative" ref={notificationMenuRef}>
                         <button
-                            onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
+                            onClick={() => {
+                                setIsNotificationsOpen(!isNotificationsOpen);
+                                setIsProfileMenuOpen(false);
+                            }}
                             className="flex items-center justify-center rounded-full size-10 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-primary hover:bg-blue-50 dark:hover:bg-slate-700 transition-colors relative"
                         >
                             <span className="material-symbols-outlined text-[20px]">notifications</span>
@@ -81,7 +80,7 @@ export default function Navbar({ setIsMobileMenuOpen }: NavbarProps) {
                         </button>
 
                         {isNotificationsOpen && (
-                            <div className="absolute right-0 top-12 w-80 bg-white dark:bg-[#1a2230] rounded-xl shadow-lg border border-slate-100 dark:border-slate-800 z-50 overflow-hidden">
+                            <div className="fixed top-16 right-4 left-4 sm:absolute sm:top-12 sm:-right-4 sm:left-auto w-auto sm:w-80 max-w-[400px] bg-white dark:bg-[#1a2230] rounded-xl shadow-lg border border-slate-100 dark:border-slate-800 z-[100] overflow-hidden">
                                 <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
                                     <h3 className="font-semibold text-[#111318] dark:text-white">Notifications</h3>
                                     <button className="text-xs text-primary hover:underline">Mark all read</button>
@@ -107,11 +106,13 @@ export default function Navbar({ setIsMobileMenuOpen }: NavbarProps) {
                     </div>
                 )}
 
-                {/* Profile Icon for Super Admin and Student Page */}
-                {(isSuperAdmin || isStudentPage) && (
-                    <div className="relative pl-4 border-l border-slate-200 dark:border-slate-700" ref={profileMenuRef}>
-                        <button
-                            onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
+                {/* Profile Icon */}
+                <div className={`relative pl-4 border-l border-slate-200 dark:border-slate-700 ${(!isSuperAdmin && !isStudentPage) ? 'md:hidden' : ''}`} ref={profileMenuRef}>
+                    <button
+                        onClick={() => {
+                            setIsProfileMenuOpen(!isProfileMenuOpen);
+                            setIsNotificationsOpen(false);
+                        }}
                             className="flex items-center gap-3 p-1 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer transition-colors outline-none focus:ring-2 focus:ring-primary/20"
                         >
                             <div className="flex flex-col text-right hidden sm:block">
@@ -129,7 +130,7 @@ export default function Navbar({ setIsMobileMenuOpen }: NavbarProps) {
 
                         {/* Custom Popover Menu */}
                         {isProfileMenuOpen && (
-                            <div className="absolute top-14 right-0 w-64 bg-white dark:bg-[#1e293b] border border-gray-100 dark:border-gray-700 rounded-xl shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 z-50">
+                            <div className="absolute top-14 right-0 w-64 bg-white dark:bg-[#1e293b] border border-gray-100 dark:border-gray-700 rounded-xl shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 z-[100]">
                                 <div className="p-4 border-b border-gray-100 dark:border-gray-700 bg-slate-50 dark:bg-slate-800/50">
                                     <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Signed in as</p>
                                     <p className="text-sm font-bold text-[#111318] dark:text-white truncate">{user?.primaryEmailAddress?.emailAddress}</p>
@@ -156,7 +157,6 @@ export default function Navbar({ setIsMobileMenuOpen }: NavbarProps) {
                             </div>
                         )}
                     </div>
-                )}
             </div>
         </header>
     );

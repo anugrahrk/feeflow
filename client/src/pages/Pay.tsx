@@ -44,7 +44,7 @@ export default function Pay() {
     const navigate = useNavigate();
     const [loading, setLoading] = useState(false);
     const [status, setStatus] = useState<'pending' | 'success' | 'failure' | 'already_paid'>('pending');
-    const [txDetails, setTxDetails] = useState<{ id: string; amount: number; date: string } | null>(null);
+    const [txDetails, setTxDetails] = useState<{ id: string; amount: number; date: string; dbId?: string } | null>(null);
     const [checkingStatus, setCheckingStatus] = useState(true);
     const [redirectSeconds, setRedirectSeconds] = useState(5);
     const [paymentData, setPaymentData] = useState<PaymentDetails | null>(null);
@@ -180,7 +180,8 @@ export default function Pay() {
                             setTxDetails({
                                 id: response.razorpay_payment_id,
                                 amount: paymentData.student.amount,
-                                date: new Date().toLocaleString()
+                                date: new Date().toLocaleString(),
+                                dbId: verifyRes.data.paymentId
                             });
                             toast.success(`Payment Successful! Transaction ID: ${response.razorpay_payment_id}`);
                         } else {
@@ -221,6 +222,29 @@ export default function Pay() {
             // setStatus('failure'); // Optional: decide if init errors show the failure screen
         } finally {
             // setLoading(false); // handled in ondismiss or success
+        }
+    };
+
+    const handleDownloadReceipt = async () => {
+        if (!txDetails?.dbId) {
+             toast.error("Receipt ID not found.");
+             return;
+        }
+        
+        try {
+            const response = await axios.get(`${import.meta.env.VITE_API_URL}/payments/receipt/${txDetails.dbId}`, {
+                responseType: 'blob',
+            });
+            const url = window.URL.createObjectURL(new Blob([response.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `receipt_${txDetails.id}.pdf`);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+        } catch (error) {
+            console.error("Error downloading receipt:", error);
+            toast.error("Failed to download receipt.");
         }
     };
 
@@ -290,8 +314,9 @@ export default function Pay() {
                         <span>HASH-992-PXQ-Z011</span>
                     </div>
 
-                    <div className="mt-4 text-center">
+                    <div className="mt-4 flex flex-col items-center gap-1">
                         <a href="#" className="text-slate-500 hover:text-slate-400 text-xs underline">Need help? Contact our support team</a>
+                        <a href="mailto:support@fee4flow.in" className="text-slate-500 hover:text-slate-400 text-xs">support@fee4flow.in</a>
                     </div>
                 </div>
             </div>
@@ -341,15 +366,21 @@ export default function Pay() {
                         Return to Dashboard
                     </button>
 
-                    <button className="w-full bg-[#0f1115] hover:bg-slate-800 border border-slate-700 text-white font-medium py-3 rounded-xl transition-all flex items-center justify-center gap-2">
+                    <button 
+                        onClick={handleDownloadReceipt}
+                        className="w-full bg-[#0f1115] hover:bg-slate-800 border border-slate-700 text-white font-medium py-3 rounded-xl transition-all flex items-center justify-center gap-2"
+                    >
                         <span className="material-symbols-outlined text-sm">download</span>
                         Download Receipt
                     </button>
 
-                    <div className="mt-8 pt-6 border-t border-slate-700/50">
+                    <div className="mt-8 pt-6 border-t border-slate-700/50 flex flex-col items-center gap-1">
                         <button className="text-blue-500 text-xs font-medium hover:text-blue-400 transition-colors">
                             Need help with this transaction? Contact Support
                         </button>
+                        <a href="mailto:support@fee4flow.in" className="text-slate-400 hover:text-white text-xs transition-colors">
+                            support@fee4flow.in
+                        </a>
                     </div>
                 </div>
             </div>
@@ -395,6 +426,10 @@ export default function Pay() {
                     <button className="w-full bg-[#0f1115] hover:bg-slate-800 border border-slate-700 text-white font-medium py-3 rounded-xl transition-all">
                         Contact Support
                     </button>
+                    
+                    <div className="mt-4 text-center">
+                        <a href="mailto:support@fee4flow.in" className="text-slate-500 hover:text-slate-400 text-xs">support@fee4flow.in</a>
+                    </div>
                 </div>
             </div>
         );

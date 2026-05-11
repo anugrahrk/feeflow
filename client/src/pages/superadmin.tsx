@@ -124,8 +124,8 @@ export default function SuperAdmin() {
 
     return (
         <div className="flex flex-col h-screen bg-[#0f172a] text-white font-sans overflow-hidden" onClick={handleBackdropClick}>
-            {/* Navbar - Passing no-op for sidebar toggle since it's not needed here */}
-            <Navbar setIsMobileMenuOpen={() => { }} />
+            {/* Navbar - No sidebar for superadmin */}
+            <Navbar />
 
             <div className="flex-1 overflow-y-auto p-6 md:p-8">
                 <div className="max-w-[1400px] mx-auto flex flex-col gap-8">
@@ -154,7 +154,7 @@ export default function SuperAdmin() {
 
                     {/* Table */}
                     {/* Search and Action Row */}
-                    <div className="flex flex-col md:flex-row items-center justify-between gap-4 z-50">
+                    <div className="flex flex-col md:flex-row items-center justify-between gap-4 relative z-40">
                         {/* Search Bar with Suggestions */}
                         <div className="relative w-full md:w-96">
                             <div className="relative">
