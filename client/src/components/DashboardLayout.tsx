@@ -12,7 +12,9 @@ export default function DashboardLayout() {
             <div className="flex h-screen w-full overflow-hidden relative">
                 <Sidebar isMobileMenuOpen={isMobileMenuOpen} setIsMobileMenuOpen={setIsMobileMenuOpen} />
                 <div className="flex flex-col flex-1 h-full overflow-hidden relative">
-                    {!['/c', '/p'].includes(location.pathname) && <Navbar setIsMobileMenuOpen={setIsMobileMenuOpen} />}
+                    <div className={['/c', '/p'].includes(location.pathname) ? "block md:hidden" : "block"}>
+                        <Navbar setIsMobileMenuOpen={setIsMobileMenuOpen} />
+                    </div>
                     <main className="flex-1 overflow-y-auto bg-background-light dark:bg-background-dark relative">
                         <Outlet />
                     </main>

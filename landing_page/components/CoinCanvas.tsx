@@ -14,6 +14,7 @@ export default function CoinCanvas({
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const [images, setImages] = useState<HTMLImageElement[]>([]);
     const [isLoaded, setIsLoaded] = useState(false);
+    const [hasScrolled, setHasScrolled] = useState(false);
     const currentFrameRef = useRef(0);
     const animationFrameRef = useRef<number>(0);
 
@@ -84,6 +85,12 @@ export default function CoinCanvas({
         if (!isLoaded || !images.length) return;
 
         const handleScroll = () => {
+            setHasScrolled(prev => {
+                if (window.scrollY > 50 && !prev) return true;
+                if (window.scrollY <= 50 && prev) return false;
+                return prev;
+            });
+
             if (animationFrameRef.current) {
                 cancelAnimationFrame(animationFrameRef.current);
             }
@@ -146,6 +153,20 @@ export default function CoinCanvas({
                     left: 0,
                 }}
             />
+
+            {/* Scroll Indicator */}
+            {isLoaded && (
+                <div
+                    className={`fixed bottom-8 left-1/2 -translate-x-1/2 z-40 transition-opacity duration-500 flex flex-col items-center gap-2 ${
+                        hasScrolled ? 'opacity-0 pointer-events-none' : 'opacity-100'
+                    }`}
+                >
+                    <span className="text-white/60 text-sm tracking-widest uppercase font-semibold">Scroll to explore</span>
+                    <div className="w-6 h-10 border-2 border-white/30 rounded-full flex justify-center p-1">
+                        <div className="w-1.5 h-3 bg-white/70 rounded-full animate-bounce" style={{ marginTop: '2px' }} />
+                    </div>
+                </div>
+            )}
         </>
     );
 }

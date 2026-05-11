@@ -61,7 +61,7 @@ export default function Navbar({ setIsMobileMenuOpen }: NavbarProps) {
 
                 {!isStudentPage ? null : (
                     <div className="flex items-center gap-2">
-                        <img src="/feeflow-logo.png" alt="FeeFlow Logo" className="w-13 h-13 object-contain rounded-lg" />
+                        <img src="/feeflow-logo.png" alt="FeeFlow Logo" className="w-10 h-10 object-contain rounded-lg" />
                         <h2 className="text-[#111318] dark:text-white text-xl font-bold leading-tight tracking-[-0.015em]">
                             FeeFlow
                         </h2>
@@ -107,8 +107,8 @@ export default function Navbar({ setIsMobileMenuOpen }: NavbarProps) {
                     </div>
                 )}
 
-                {/* Profile Icon for Super Admin Only - Custom Implementation */}
-                {isSuperAdmin && (
+                {/* Profile Icon for Super Admin and Student Page */}
+                {(isSuperAdmin || isStudentPage) && (
                     <div className="relative pl-4 border-l border-slate-200 dark:border-slate-700" ref={profileMenuRef}>
                         <button
                             onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
@@ -116,9 +116,9 @@ export default function Navbar({ setIsMobileMenuOpen }: NavbarProps) {
                         >
                             <div className="flex flex-col text-right hidden sm:block">
                                 <p className="text-sm font-semibold text-[#111318] dark:text-white leading-tight">
-                                    {user?.fullName || 'Administrator'}
+                                    {user?.fullName || (isSuperAdmin ? 'Administrator' : 'Student')}
                                 </p>
-                                <p className="text-xs text-slate-500">Super User</p>
+                                <p className="text-xs text-slate-500">{isSuperAdmin ? 'Super User' : 'Student'}</p>
                             </div>
                             <img
                                 src={user?.imageUrl}

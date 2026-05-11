@@ -96,7 +96,7 @@ export default function Sidebar({ isMobileMenuOpen, setIsMobileMenuOpen }: Sideb
                 </div>
 
                 {/* Custom User Profile Section */}
-                <div className="p-4 mt-auto border-t border-gray-100 dark:border-gray-800 relative" ref={profileMenuRef}>
+                <div className="hidden md:block p-4 mt-auto border-t border-gray-100 dark:border-gray-800 relative" ref={profileMenuRef}>
 
                     {/* Popover Menu */}
                     {isProfileMenuOpen && (
