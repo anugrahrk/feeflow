@@ -2,8 +2,9 @@ import { Request, Response } from 'express';
 import Student from '../models/Student.js';
 import Payment from '../models/Payment.js';
 import { sendPaymentLink, sendReminder } from '../services/emailService.js';
+import fs from 'fs';
+import path from 'path';
 import PDFDocument from 'pdfkit-table';
-import { uploadToS3, getSignedDownloadUrl } from '../services/S3service.js';
 
 // Create Student
 export const createStudent = async (req: Request, res: Response) => {
@@ -13,6 +14,8 @@ export const createStudent = async (req: Request, res: Response) => {
 
         const { studentName, email, mobileNumber, feeRecurringDate, amount } = req.body;
 
+        // Check existing student? Email should be unique globally or per org? 
+        // Schema says unique sparse.
         if (email) {
             const existing = await Student.findOne({ email });
             if (existing) return res.status(400).json({ message: 'Student with this email already exists' });
@@ -44,8 +47,8 @@ export const getStudents = async (req: Request, res: Response) => {
         const page = parseInt(req.query.page as string) || 1;
         const limit = 5;
         const search = req.query.search as string || '';
-        const sort = req.query.sort as string;
-        const status = req.query.status as string;
+        const sort = req.query.sort as string; // 'nearDate'
+        const status = req.query.status as string; // 'true' | 'false'
         const minAmount = req.query.minAmount ? Number(req.query.minAmount) : undefined;
         const maxAmount = req.query.maxAmount ? Number(req.query.maxAmount) : undefined;
 
@@ -69,8 +72,14 @@ export const getStudents = async (req: Request, res: Response) => {
             if (maxAmount !== undefined) query.amount.$lte = maxAmount;
         }
 
+        // Sort Logic
         let sortOption: any = { createdAt: -1 };
         if (sort === 'nearDate') {
+            // Nearest recurring date to today.
+            // This is tricky in MongoDB simple sort if dates are past/future mixed.
+            // Usually means "closest absolute difference".
+            // Or just ascending order of feeRecurringDate?
+            // Let's assume ascending order for simplicity as "upcoming".
             sortOption = { feeRecurringDate: 1 };
         }
 
@@ -145,7 +154,10 @@ export const sendPaymentLinkEmail = async (req: Request, res: Response) => {
             return res.status(404).json({ message: 'Student not found or email missing' });
         }
 
-        const paymentLink = `${process.env.CLIENT_URI}/pay/${student._id}`;
+        // Generate Razorpay Link or use a frontend URL with query params
+        // Assuming frontend URL for now: e.g., https://myapp.com/pay?studentId=...
+        const paymentLink = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/pay/${student._id}`;
+
         await sendPaymentLink(student.email, student.studentName, paymentLink);
         res.json({ message: 'Payment link sent successfully' });
     } catch (error) {
@@ -153,59 +165,65 @@ export const sendPaymentLinkEmail = async (req: Request, res: Response) => {
     }
 };
 
-// Generate PDF Report — now uploads to S3 instead of R2
+// Generate PDF Report
+// Generate PDF Report
 export const generatePDFReport = async (req: Request, res: Response) => {
     try {
         const organizationId = req.organizationId;
         const students = await Student.find({ organizationId });
 
-        // Build PDF with pdfkit-table (works fine on Node.js/AWS)
+        const uploadDir = path.join(process.cwd(), 'upload');
+        if (!fs.existsSync(uploadDir)) {
+            fs.mkdirSync(uploadDir, { recursive: true });
+        }
+
+        const fileName = `output_${organizationId}.pdf`;
+        const filePath = path.join(uploadDir, fileName);
+
         const doc = new PDFDocument({ margin: 30, size: 'A4' });
-        const chunks: Buffer[] = [];
+        const writeStream = fs.createWriteStream(filePath);
 
-        doc.on('data', (chunk) => chunks.push(chunk));
-
-        const pdfReady = new Promise<Buffer>((resolve, reject) => {
-            doc.on('end', () => resolve(Buffer.concat(chunks)));
-            doc.on('error', reject);
-        });
+        doc.pipe(writeStream);
 
         doc.fontSize(18).text('Student Report', { align: 'center' });
         doc.moveDown();
 
         const table = {
-            title: "Student Fees Report",
-            headers: ["Name", "Email", "Amount", "Status"],
+            title: "All Students",
+            subtitle: `Total Students: ${students.length}`,
+            headers: ["Name", "Email", "Mobile", "Amount", "Due Date", "Status"],
             rows: students.map((s: any) => [
                 s.studentName,
                 s.email || '-',
+                s.mobileNumber || '-',
                 s.amount.toString(),
+                new Date(s.feeRecurringDate).toLocaleDateString(),
                 s.isEnabled ? 'Active' : 'Disabled'
             ]),
         };
 
-        await doc.table(table as any, { width: 500 });
+        await doc.table(table as any, {
+            width: 500,
+        });
+
         doc.end();
 
-        const pdfBuffer = await pdfReady;
+        writeStream.on('finish', () => {
+            const downloadUrl = `${req.protocol}://${req.get('host')}/upload/${fileName}`;
+            res.json({ message: 'PDF generated successfully', downloadUrl });
+        });
 
-        // Upload to S3 (replaces R2 bucket.put)
-        const s3Key = `reports/report_${organizationId}_${Date.now()}.pdf`;
-        await uploadToS3(s3Key, pdfBuffer, 'application/pdf');
-
-        // Return a pre-signed URL valid for 1 hour (replaces the /upload/:filename route)
-        const downloadUrl = await getSignedDownloadUrl(s3Key, 3600);
-
-        res.json({
-            message: 'Report generated. Link expires in 1 hour.',
-            downloadUrl
+        writeStream.on('error', (err) => {
+            console.error('Error writing PDF file:', err);
+            res.status(500).json({ message: 'Error generating PDF file', error: err });
         });
 
     } catch (error) {
-        console.error('Error generating PDF:', error);
         res.status(500).json({ message: 'Error generating PDF', error });
     }
 };
+
+// --- Dashboard Stats ---
 
 // Get Monthly Stats
 export const getMonthlyStats = async (req: Request, res: Response) => {
@@ -216,6 +234,7 @@ export const getMonthlyStats = async (req: Request, res: Response) => {
         const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
         const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
 
+        // Current Month Stats
         const currentMonthPayments = await Payment.aggregate([
             {
                 $match: {
@@ -228,8 +247,9 @@ export const getMonthlyStats = async (req: Request, res: Response) => {
         ]);
 
         const totalCollections = currentMonthPayments[0]?.total || 0;
-        const transactionVolume = currentMonthPayments[0]?.count || 0;
+        const transactionVolume = currentMonthPayments[0]?.count || 0; // Or all transactions including pending? Assuming completed for now.
 
+        // Last Month Stats (for Growth Calc)
         const lastMonthPayments = await Payment.aggregate([
             {
                 $match: {
@@ -246,9 +266,10 @@ export const getMonthlyStats = async (req: Request, res: Response) => {
         if (lastMonthCollections > 0) {
             collectionGrowth = ((totalCollections - lastMonthCollections) / lastMonthCollections) * 100;
         } else if (totalCollections > 0) {
-            collectionGrowth = 100;
+            collectionGrowth = 100; // 100% growth if started from 0
         }
 
+        // Pending Dues (This Month created payments that are pending)
         const pendingPayments = await Payment.aggregate([
             {
                 $match: {
@@ -261,6 +282,7 @@ export const getMonthlyStats = async (req: Request, res: Response) => {
         ]);
         const pendingDues = pendingPayments[0]?.total || 0;
 
+        // Pending Growth? (vs Last Month)
         const lastMonthPending = await Payment.aggregate([
             {
                 $match: {
@@ -300,8 +322,8 @@ export const getChartData = async (req: Request, res: Response) => {
         const organizationId = req.organizationId;
         const end = new Date();
         const start = new Date();
-        start.setMonth(start.getMonth() - 5);
-        start.setDate(1);
+        start.setMonth(start.getMonth() - 5); // Last 6 months
+        start.setDate(1); // Start of that month
 
         const payments = await Payment.aggregate([
             {
@@ -323,13 +345,19 @@ export const getChartData = async (req: Request, res: Response) => {
             { $sort: { "_id.year": 1, "_id.month": 1 } }
         ]);
 
+        // Map to format [{name: 'Jan', value: 1000}, ...]
+        // Note: aggregation returns month 1-12.
         const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-        const result = payments.map((p: any) => ({
+
+        // This returns only months with data. The frontend logic I wrote fills in the gaps.
+        // So I can just return this simple mapped array.
+        const result = payments.map(p => ({
             name: monthNames[p._id.month - 1],
             value: p.total
         }));
 
         res.json(result);
+
     } catch (error) {
         res.status(500).json({ message: 'Error fetching chart data', error });
     }
@@ -350,17 +378,18 @@ export const getTransactions = async (req: Request, res: Response) => {
             .limit(limit)
             .populate('studentId', 'studentName');
 
+        // Map to flatten structure if needed or return as is
         const mappedTransactions = transactions.map((t: any) => ({
             _id: t._id,
             transactionId: t.razorpayPaymentId || t._id.toString().slice(-6).toUpperCase(),
             studentName: t.studentId?.studentName || 'Unknown',
             amount: t.amount,
-            date: t.updatedAt,
+            date: t.updatedAt, // User requested updatedAt
             status: t.status
         }));
 
         res.json({
-            data: mappedTransactions,
+            data: mappedTransactions, // User requested 'data' key in store
             pagination: {
                 total,
                 page,
@@ -386,25 +415,29 @@ export const sendPaymentReminders = async (req: Request, res: Response) => {
         const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
         const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
 
+        // 1. Get all enabled students
         const students = await Student.find({ organizationId, isEnabled: true });
 
+        // 2. Get all completed payments for this month
         const payments = await Payment.find({
             organizationId,
             status: 'completed',
             createdAt: { $gte: startOfMonth, $lte: endOfMonth }
         }).select('studentId');
 
-        const paidStudentIds = new Set(payments.map((p: any) => p.studentId.toString()));
+        const paidStudentIds = new Set(payments.map(p => p.studentId.toString()));
 
-        const overdueStudents = students.filter((student: any) => {
+        // 3. Filter overdue and unpaid
+        const overdueStudents = students.filter(student => {
             const dueDay = new Date(student.feeRecurringDate).getDate();
             const isOverdue = currentDay > dueDay;
             const isPaid = paidStudentIds.has(student._id.toString());
             return isOverdue && !isPaid;
         });
 
+        // 4. Send Emails
         let sentCount = 0;
-        for (const student of overdueStudents as any[]) {
+        for (const student of overdueStudents) {
             if (student.email) {
                 await sendReminder(student.email, student.studentName, student.amount);
                 sentCount++;
@@ -428,30 +461,33 @@ export const getPendingPaymentsCount = async (req: Request, res: Response) => {
         const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
         const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
 
+        // 1. Get all enabled students
         const students = await Student.find({ organizationId, isEnabled: true });
 
+        // 2. Get all completed payments for this month
         const payments = await Payment.find({
             organizationId,
             status: 'completed',
             createdAt: { $gte: startOfMonth, $lte: endOfMonth }
         }).select('studentId');
 
-        const paidStudentIds = new Set(payments.map((p: any) => p.studentId.toString()));
+        const paidStudentIds = new Set(payments.map(p => p.studentId.toString()));
 
-        const overdueStudents = students.filter((student: any) => {
+        // 3. Filter overdue and unpaid
+        const overdueStudents = students.filter(student => {
             const dueDay = new Date(student.feeRecurringDate).getDate();
-            const isOverdue = currentDay > dueDay;
+            const isOverdue = currentDay > dueDay; // Date has passed
             const isPaid = paidStudentIds.has(student._id.toString());
             return isOverdue && !isPaid;
         });
 
         res.json({
             count: overdueStudents.length,
-            students: overdueStudents.map((s: any) => ({
+            students: overdueStudents.map(s => ({
                 id: s._id,
                 name: s.studentName,
                 amount: s.amount,
-                dueDate: new Date(s.feeRecurringDate).getDate()
+                dueDate: new Date(s.feeRecurringDate).getDate() // Just the day
             }))
         });
 
