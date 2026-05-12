@@ -37,6 +37,14 @@ app.use('/upload', express.static(path.join(process.cwd(), 'upload')));
 initCronJobs();
 
 app.use(clerkMiddleware())
+app.get('/health', (req: Request, res: Response) => {
+    res.status(200).json({
+        success: true,
+        message: 'Server is healthy',
+        uptime: process.uptime(),
+        timestamp: new Date().toISOString()
+    });
+});
 const PORT = process.env.PORT || 8080
 const MONGO_URI = process.env.MONGO_URI || '';
 
