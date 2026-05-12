@@ -7,7 +7,6 @@ import TrustSection from '@/components/sections/TrustSection';
 import CTASection from '@/components/sections/CTASection';
 
 export default function Home() {
-    fetch('')
     return (
         <main className="relative bg-background-primary">
             {/* Fixed Navigation */}
