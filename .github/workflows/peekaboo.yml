@@ -1,0 +1,217 @@
+name: Peekaboo iOS Build
+# Note: If the repo has existing GitHub Actions workflows,
+# those will also run independently. Only the Peekaboo
+# workflow uploads to your preview.
+on:
+  workflow_dispatch:
+    inputs:
+      build_id:
+        description: 'Peekaboo build ID'
+        required: true
+jobs:
+  build:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: ./feeflow-mobile
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup environment variables
+        run: |
+          env | grep "^PEEKABOO_ENV_" | while IFS='=' read -r key value; do
+            clean_key="${key#PEEKABOO_ENV_}"
+            echo "$clean_key=$value" >> $GITHUB_ENV
+            echo "$clean_key=$value" >> .env
+            echo "$clean_key=$value" >> .env.local
+            echo "$clean_key=$value" >> .env.production
+            echo "$clean_key=$value" >> .env.development
+          done
+          echo "✓ Environment variables configured"
+        working-directory: ./feeflow-mobile
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install
+        working-directory: ./feeflow-mobile
+
+      - name: Expo Prebuild
+        run: npx expo prebuild --platform ios --non-interactive
+        working-directory: ./feeflow-mobile
+
+      - name: Build for simulator (Release)
+        run: |
+          WORKSPACE=$(find ./ios -name "*.xcworkspace" \
+            -not -path "*/Pods/*" \
+            -not -path "*/.git/*" | head -1)
+
+          echo "Workspace: $WORKSPACE"
+          echo "=== Available schemes ==="
+          xcodebuild -list -workspace "$WORKSPACE" 2>/dev/null
+          echo "========================="
+
+          # Detect app name from app.json
+          APP_NAME=$(python3 -c "
+          import json
+          with open('app.json') as f:
+            d = json.load(f)
+          name = d.get('expo',{}).get('name','') or d.get('name','')
+          print(name.replace(' ',''))
+          " 2>/dev/null || echo "")
+
+          echo "App name: $APP_NAME"
+
+          # Find scheme matching app name first
+          SCHEME=""
+          if [ -n "$APP_NAME" ]; then
+            SCHEME=$(xcodebuild -list -workspace "$WORKSPACE" 2>/dev/null \
+              | awk '/Schemes:/,0' \
+              | grep -v "Schemes:" \
+              | grep -i "^[[:space:]]*$APP_NAME" \
+              | head -1 \
+              | xargs)
+          fi
+
+          # Fallback — first non-internal scheme
+          if [ -z "$SCHEME" ]; then
+            SCHEME=$(xcodebuild -list -workspace "$WORKSPACE" 2>/dev/null \
+              | awk '/Schemes:/,0' \
+              | grep -v "Schemes:" \
+              | grep -v "^\s*$" \
+              | sed 's/^[[:space:]]*//' \
+              | grep -v "^EX" \
+              | grep -v "^Expo" \
+              | grep -v "^React" \
+              | grep -v "^RN" \
+              | grep -v "^RCT" \
+              | grep -v "^FB" \
+              | grep -v "^hermes" \
+              | grep -v "^Pods" \
+              | grep -v "^flipper" \
+              | grep -v "^yoga" \
+              | grep -v "^boost" \
+              | grep -v "Tests$" \
+              | head -1 \
+              | xargs)
+          fi
+
+          echo "Selected scheme: $SCHEME"
+
+          if [ -z "$SCHEME" ]; then
+            echo "ERROR: Could not detect app scheme"
+            exit 1
+          fi
+
+          # Release build — always embeds JS bundle, never needs Metro
+          xcodebuild \
+            -workspace "$WORKSPACE" \
+            -scheme "$SCHEME" \
+            -sdk iphonesimulator \
+            -configuration Release \
+            -derivedDataPath ./build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            EXCLUDED_ARCHS="arm64"
+        working-directory: ./feeflow-mobile
+
+      - name: Find and zip .app
+        run: |
+          echo "=== Contents of Release-iphonesimulator ==="
+          ls -la ./build/Build/Products/Release-iphonesimulator/ 2>/dev/null || echo "Not found"
+          echo "============================================"
+
+          # Release builds go to Release-iphonesimulator
+          APP=$(find ./build/Build/Products/Release-iphonesimulator \
+            -maxdepth 1 \
+            -name "*.app" \
+            -not -name "*.appex" \
+            2>/dev/null | head -1)
+
+          # Fallback search entire build
+          if [ -z "$APP" ]; then
+            APP=$(find ./build -name "*.app" \
+              -not -name "*.appex" \
+              -not -path "*/\.*" \
+              2>/dev/null | head -1)
+          fi
+
+          if [ -z "$APP" ]; then
+            echo "ERROR: No .app found"
+            find ./build -type d | head -30
+            exit 1
+          fi
+
+          echo "Found: $APP"
+
+          # Check app size before zipping
+          APP_SIZE_MB=$(du -sm "$APP" | cut -f1)
+          echo "App size: ${APP_SIZE_MB}MB"
+
+          if [ "$APP_SIZE_MB" -gt 500 ]; then
+            echo "PEEKABOO_ERROR: APP_TOO_LARGE:${APP_SIZE_MB}" | tee .peekaboo_error
+            exit 2
+          fi
+
+          zip -r app.zip "$APP"
+          ZIP_SIZE_MB=$(du -sm app.zip | cut -f1)
+          echo "Zipped: ${ZIP_SIZE_MB}MB"
+
+          if [ "$ZIP_SIZE_MB" -gt 50 ]; then
+            echo "PEEKABOO_ERROR: ZIP_TOO_LARGE:${ZIP_SIZE_MB}" | tee .peekaboo_error
+            exit 2
+          fi
+
+          echo "Size check passed"
+        working-directory: ./feeflow-mobile
+
+      - name: Get signed upload URL
+        run: |
+          RESPONSE=$(curl -s -X POST ${{ secrets.PEEKABOO_WEBHOOK_URL }}/upload-url \
+            -H "x-peekaboo-secret: ${{ secrets.PEEKABOO_SECRET }}" \
+            -H "Content-Type: application/json" \
+            -d '{"build_id":"${{ github.event.inputs.build_id }}"}')
+          echo "SIGNED_URL=$(echo $RESPONSE | python3 -c "import sys,json; print(json.load(sys.stdin)['signedUrl'])")" >> $GITHUB_ENV
+        working-directory: ./feeflow-mobile
+
+      - name: Upload app.zip to Supabase Storage
+        run: |
+          curl -X PUT "$SIGNED_URL" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary @app.zip
+        working-directory: ./feeflow-mobile
+
+      - name: Notify Peekaboo webhook
+        run: |
+          curl -X POST ${{ secrets.PEEKABOO_WEBHOOK_URL }} \
+            -H "x-peekaboo-secret: ${{ secrets.PEEKABOO_SECRET }}" \
+            -H "Content-Type: application/json" \
+            -d '{"build_id":"${{ github.event.inputs.build_id }}"}'
+        working-directory: ./feeflow-mobile
+
+      - name: Notify failure
+        if: failure()
+        run: |
+          ERROR_MSG="Build failed on GitHub Actions"
+          EXIT_CODE=$?
+
+          # Check if it was a size error
+          if grep -r "PEEKABOO_ERROR: ZIP_TOO_LARGE" . 2>/dev/null || \
+             grep -r "PEEKABOO_ERROR: APP_TOO_LARGE" . 2>/dev/null; then
+            SIZE=$(grep -r "PEEKABOO_ERROR:.*LARGE" . 2>/dev/null | grep -o '[0-9]*$' | head -1)
+            ERROR_MSG="APP_SIZE_LIMIT:${SIZE}MB"
+          fi
+
+          curl -s -X POST ${{ secrets.PEEKABOO_WEBHOOK_URL }} \
+            -H "x-peekaboo-secret: ${{ secrets.PEEKABOO_SECRET }}" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"build_id\": \"${{ github.event.inputs.build_id }}\",
+              \"status\": \"failed\",
+              \"error\": \"$ERROR_MSG. Full logs: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\"
+            }"
+        working-directory: ./feeflow-mobile
