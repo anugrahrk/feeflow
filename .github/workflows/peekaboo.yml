@@ -258,80 +258,25 @@ jobs:
 
       - name: Get signed upload URL
         run: |
-          WEBHOOK_URL="${{ secrets.PEEKABOO_WEBHOOK_URL }}"
-          # Try primary upload-url endpoint under webhook/build, or fallback to root /api/upload-url
-          URL_1="${WEBHOOK_URL%/}/upload-url"
-          URL_2="${WEBHOOK_URL%/webhook/build}/upload-url"
-
-          echo "Requesting signed upload URL from $URL_1..."
-          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "$URL_1" \
+          RESPONSE=$(curl -s -X POST ${{ secrets.PEEKABOO_WEBHOOK_URL }}/../../api/upload-url \
             -H "x-peekaboo-secret: ${{ secrets.PEEKABOO_SECRET }}" \
             -H "Content-Type: application/json" \
             -d '{"build_id":"${{ github.event.inputs.build_id }}"}')
+          echo "SIGNED_URL=$(echo $RESPONSE | python3 -c "import sys,json; print(json.load(sys.stdin)['signedUrl'])")" >> $GITHUB_ENV
 
-          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
-          BODY=$(echo "$RESPONSE" | sed '$d')
-
-          # If first endpoint failed (404/not found), try fallback
-          if [ "$HTTP_CODE" != "200" ]; then
-            echo "Endpoint $URL_1 returned HTTP $HTTP_CODE, trying $URL_2..."
-            RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "$URL_2" \
-              -H "x-peekaboo-secret: ${{ secrets.PEEKABOO_SECRET }}" \
-              -H "Content-Type: application/json" \
-              -d '{"build_id":"${{ github.event.inputs.build_id }}"}')
-            HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
-            BODY=$(echo "$RESPONSE" | sed '$d')
-          fi
-
-          echo "Response code: $HTTP_CODE"
-          echo "Response body: $BODY"
-
-          SIGNED_URL=$(echo "$BODY" | python3 -c "
-import sys, json
-try:
-    data = json.load(sys.stdin)
-    print(data.get('signedUrl', ''))
-except Exception as e:
-    sys.stderr.write(f'Parse error: {e}\n')
-    print('')
-" 2>/dev/null || echo "")
-
-          if [ -z "$SIGNED_URL" ]; then
-            echo "ERROR: Failed to obtain signed upload URL"
-            echo "HTTP Status: $HTTP_CODE"
-            echo "Response: $BODY"
-            exit 1
-          fi
-
-          echo "SIGNED_URL=$SIGNED_URL" >> $GITHUB_ENV
-          echo "✓ Successfully obtained signed upload URL"
-        working-directory: ./feeflow-mobile
-
-      - name: Upload app.zip to Supabase Storage
+      - name: Upload to Supabase Storage
         run: |
-          if [ -z "$SIGNED_URL" ]; then
-            echo "ERROR: SIGNED_URL is empty"
-            exit 1
-          fi
-          if [ ! -f "app.zip" ]; then
-            echo "ERROR: app.zip not found in $(pwd)"
-            ls -la
-            exit 1
-          fi
-          echo "Uploading app.zip ($(du -sh app.zip | cut -f1)) to Supabase Storage..."
-          curl -f -X PUT "$SIGNED_URL" \
+          curl -X PUT "$SIGNED_URL" \
             -H "Content-Type: application/octet-stream" \
             --data-binary @app.zip
-          echo "✓ Upload complete"
         working-directory: ./feeflow-mobile
 
-      - name: Notify Peekaboo webhook
+      - name: Notify Peekaboo
         run: |
           curl -s -X POST ${{ secrets.PEEKABOO_WEBHOOK_URL }} \
             -H "x-peekaboo-secret: ${{ secrets.PEEKABOO_SECRET }}" \
             -H "Content-Type: application/json" \
             -d '{"build_id":"${{ github.event.inputs.build_id }}"}'
-        working-directory: ./feeflow-mobile
 
       - name: Notify failure
         if: failure()
