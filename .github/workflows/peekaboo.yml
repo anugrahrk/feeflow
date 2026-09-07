@@ -1,0 +1,351 @@
+name: Peekaboo iOS Build
+# Note: If the repo has existing GitHub Actions workflows,
+# those will also run independently. Only the Peekaboo
+# workflow uploads to your preview.
+on:
+  workflow_dispatch:
+    inputs:
+      build_id:
+        description: 'Peekaboo build ID'
+        required: true
+jobs:
+  build:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: ./feeflow-mobile
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup environment variables
+        run: |
+          touch .env .env.local .env.production .env.development
+          env | grep "^PEEKABOO_ENV_" | while IFS='=' read -r key value; do
+            clean_key="${key#PEEKABOO_ENV_}"
+            echo "$clean_key=$value" >> .env
+            echo "$clean_key=$value" >> .env.local
+            echo "$clean_key=$value" >> .env.production
+            echo "$clean_key=$value" >> .env.development
+            if [[ "$clean_key" != EXPO_PUBLIC_* ]]; then
+              echo "EXPO_PUBLIC_${clean_key}=$value" >> .env
+              echo "EXPO_PUBLIC_${clean_key}=$value" >> .env.local
+              echo "EXPO_PUBLIC_${clean_key}=$value" >> .env.production
+              echo "EXPO_PUBLIC_${clean_key}=$value" >> .env.development
+            fi
+            echo "✓ $clean_key"
+          done
+          echo "--- Keys exported ---"
+          cut -d'=' -f1 .env
+          echo "--------------------"
+        working-directory: ./feeflow-mobile
+
+      - name: Debug env injection
+        run: |
+          echo "=== Checking for PEEKABOO_ENV_ secrets ==="
+          env | grep "^PEEKABOO_ENV_" || echo "⚠ No PEEKABOO_ENV_ vars found in environment"
+          echo "=== .env file contents (keys only) ==="
+          [ -f ".env" ] && cut -d'=' -f1 .env || echo "No .env file"
+          echo "========================================="
+        working-directory: ./feeflow-mobile
+
+      - name: Install dependencies
+        run: npm install
+        working-directory: ./feeflow-mobile
+
+      - name: Expo Prebuild
+        run: npx expo prebuild --platform ios --non-interactive
+        working-directory: ./feeflow-mobile
+
+      - name: Export JS bundle with env vars
+        run: |
+          echo "Checking env vars before bundle..."
+          if [ -f ".env" ]; then
+            echo "✓ .env exists with $(wc -l < .env) lines"
+            grep "CLERK" .env && echo "✓ Clerk key found" || echo "⚠ No CLERK key in .env"
+          else
+            echo "⚠ No .env file found"
+          fi
+
+          # Source env vars into shell
+          set -a
+          [ -f ".env" ] && source .env
+          set +a
+
+          # Get app name from app.json
+          APP_NAME=$(python3 -c "
+          import json
+          with open('app.json') as f:
+            d = json.load(f)
+          name = d.get('expo',{}).get('name','') or d.get('name','App')
+          print(name.replace(' ',''))
+          " 2>/dev/null || echo "App")
+
+          echo "App name: $APP_NAME"
+          mkdir -p "ios/$APP_NAME"
+
+          # Use expo export to bundle for iOS
+          # This is the correct command for Expo SDK 50+
+          npx expo export \
+            --platform ios \
+            --output-dir dist
+
+          # Find the generated bundle
+          BUNDLE=$(find dist -name "*.hbc" -o -name "*.js" | grep -v "assets" | head -1)
+          if [ -z "$BUNDLE" ]; then
+            BUNDLE=$(find dist -name "*.bundle" | head -1)
+          fi
+
+          echo "Bundle found: $BUNDLE"
+
+          if [ -n "$BUNDLE" ]; then
+            cp "$BUNDLE" "ios/$APP_NAME/main.jsbundle"
+            echo "✓ Bundle copied to ios/$APP_NAME/main.jsbundle"
+            # Copy assets
+            if [ -d "dist/assets" ]; then
+              cp -r dist/assets "ios/$APP_NAME/"
+              echo "✓ Assets copied"
+            fi
+          else
+            echo "⚠ Bundle not found via expo export, trying metro directly..."
+            # Fallback — use metro bundler directly
+            npx react-native bundle \
+              --platform ios \
+              --dev false \
+              --entry-file "node_modules/expo/AppEntry.js" \
+              --bundle-output "ios/$APP_NAME/main.jsbundle" \
+              --assets-dest "ios/$APP_NAME" \
+              --reset-cache 2>/dev/null || \
+            # Last fallback — use expo's internal bundler
+            npx expo export:embed \
+              --platform ios \
+              --bundle-output "ios/$APP_NAME/main.jsbundle" \
+              --assets-dest "ios/$APP_NAME"
+          fi
+
+          # Verify bundle was created
+          if [ -f "ios/$APP_NAME/main.jsbundle" ]; then
+            echo "✓ Bundle ready: $(du -sh ios/$APP_NAME/main.jsbundle)"
+          else
+            echo "ERROR: Bundle creation failed"
+            echo "Contents of ios/$APP_NAME:"
+            ls -la "ios/$APP_NAME/" 2>/dev/null || echo "Directory empty"
+            exit 1
+          fi
+        working-directory: ./feeflow-mobile
+
+      - name: Build for simulator (Release)
+        run: |
+          WORKSPACE=$(find ./ios -name "*.xcworkspace" \
+            -not -path "*/Pods/*" \
+            -not -path "*/.git/*" | head -1)
+
+          APP_NAME=$(python3 -c "
+          import json
+          with open('app.json') as f:
+            d = json.load(f)
+          name = d.get('expo',{}).get('name','') or d.get('name','')
+          print(name.replace(' ',''))
+          " 2>/dev/null || echo "")
+
+          SCHEME=""
+          if [ -n "$APP_NAME" ]; then
+            SCHEME=$(xcodebuild -list -workspace "$WORKSPACE" 2>/dev/null \
+              | awk '/Schemes:/,0' \
+              | grep -v "Schemes:" \
+              | grep -i "^[[:space:]]*$APP_NAME" \
+              | head -1 \
+              | xargs)
+          fi
+
+          if [ -z "$SCHEME" ]; then
+            SCHEME=$(xcodebuild -list -workspace "$WORKSPACE" 2>/dev/null \
+              | awk '/Schemes:/,0' \
+              | grep -v "Schemes:" \
+              | grep -v "^\s*$" \
+              | sed 's/^[[:space:]]*//' \
+              | grep -v "^EX" \
+              | grep -v "^Expo" \
+              | grep -v "^React" \
+              | grep -v "^RN" \
+              | grep -v "^RCT" \
+              | grep -v "^FB" \
+              | grep -v "^hermes" \
+              | grep -v "^Pods" \
+              | grep -v "^flipper" \
+              | grep -v "^yoga" \
+              | grep -v "^boost" \
+              | grep -v "Tests$" \
+              | head -1 \
+              | xargs)
+          fi
+
+          echo "Scheme: $SCHEME"
+
+          xcodebuild \
+            -workspace "$WORKSPACE" \
+            -scheme "$SCHEME" \
+            -sdk iphonesimulator \
+            -configuration Release \
+            -derivedDataPath ./build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            EXCLUDED_ARCHS="arm64" \
+            SKIP_BUNDLING=YES
+        working-directory: ./feeflow-mobile
+
+      - name: Copy bundle into .app and zip
+        run: |
+          APP=$(find ./build/Build/Products/Release-iphonesimulator \
+            -maxdepth 1 -name "*.app" -not -name "*.appex" \
+            2>/dev/null | head -1)
+
+          if [ -z "$APP" ]; then
+            APP=$(find ./build -name "*.app" \
+              -not -name "*.appex" \
+              -not -path "*/\.*" \
+              2>/dev/null | head -1)
+          fi
+
+          if [ -z "$APP" ]; then
+            echo "ERROR: No .app found"
+            find ./build -type d | head -20
+            exit 1
+          fi
+
+          echo "Found: $APP"
+
+          # Copy pre-built bundle into .app
+          APP_NAME=$(python3 -c "
+          import json
+          with open('app.json') as f:
+            d = json.load(f)
+          name = d.get('expo',{}).get('name','') or d.get('name','App')
+          print(name.replace(' ',''))
+          " 2>/dev/null || echo "App")
+
+          BUNDLE="ios/$APP_NAME/main.jsbundle"
+          if [ -f "$BUNDLE" ]; then
+            cp "$BUNDLE" "$APP/main.jsbundle"
+            echo "✓ Bundle copied into .app"
+            [ -d "ios/$APP_NAME/assets" ] && cp -r "ios/$APP_NAME/assets" "$APP/"
+          else
+            echo "ERROR: Bundle not found at $BUNDLE"
+            exit 1
+          fi
+
+          # Size check
+          ZIP_SIZE=$(du -sm "$APP" | cut -f1)
+          if [ "$ZIP_SIZE" -gt 500 ]; then
+            echo "PEEKABOO_ERROR: APP_TOO_LARGE:${ZIP_SIZE}"
+            exit 2
+          fi
+
+          zip -r app.zip "$APP"
+          FINAL_SIZE=$(du -sm app.zip | cut -f1)
+          echo "✓ Zipped: ${FINAL_SIZE}MB"
+
+          if [ "$FINAL_SIZE" -gt 50 ]; then
+            echo "PEEKABOO_ERROR: ZIP_TOO_LARGE:${FINAL_SIZE}"
+            exit 2
+          fi
+        working-directory: ./feeflow-mobile
+
+      - name: Get signed upload URL
+        run: |
+          WEBHOOK_URL="${{ secrets.PEEKABOO_WEBHOOK_URL }}"
+          # Try primary upload-url endpoint under webhook/build, or fallback to root /api/upload-url
+          URL_1="${WEBHOOK_URL%/}/upload-url"
+          URL_2="${WEBHOOK_URL%/webhook/build}/upload-url"
+
+          echo "Requesting signed upload URL from $URL_1..."
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "$URL_1" \
+            -H "x-peekaboo-secret: ${{ secrets.PEEKABOO_SECRET }}" \
+            -H "Content-Type: application/json" \
+            -d '{"build_id":"${{ github.event.inputs.build_id }}"}')
+
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+
+          # If first endpoint failed (404/not found), try fallback
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "Endpoint $URL_1 returned HTTP $HTTP_CODE, trying $URL_2..."
+            RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "$URL_2" \
+              -H "x-peekaboo-secret: ${{ secrets.PEEKABOO_SECRET }}" \
+              -H "Content-Type: application/json" \
+              -d '{"build_id":"${{ github.event.inputs.build_id }}"}')
+            HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+            BODY=$(echo "$RESPONSE" | sed '$d')
+          fi
+
+          echo "Response code: $HTTP_CODE"
+          echo "Response body: $BODY"
+
+          SIGNED_URL=$(echo "$BODY" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    print(data.get('signedUrl', ''))
+except Exception as e:
+    sys.stderr.write(f'Parse error: {e}\n')
+    print('')
+" 2>/dev/null || echo "")
+
+          if [ -z "$SIGNED_URL" ]; then
+            echo "ERROR: Failed to obtain signed upload URL"
+            echo "HTTP Status: $HTTP_CODE"
+            echo "Response: $BODY"
+            exit 1
+          fi
+
+          echo "SIGNED_URL=$SIGNED_URL" >> $GITHUB_ENV
+          echo "✓ Successfully obtained signed upload URL"
+        working-directory: ./feeflow-mobile
+
+      - name: Upload app.zip to Supabase Storage
+        run: |
+          if [ -z "$SIGNED_URL" ]; then
+            echo "ERROR: SIGNED_URL is empty"
+            exit 1
+          fi
+          if [ ! -f "app.zip" ]; then
+            echo "ERROR: app.zip not found in $(pwd)"
+            ls -la
+            exit 1
+          fi
+          echo "Uploading app.zip ($(du -sh app.zip | cut -f1)) to Supabase Storage..."
+          curl -f -X PUT "$SIGNED_URL" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary @app.zip
+          echo "✓ Upload complete"
+        working-directory: ./feeflow-mobile
+
+      - name: Notify Peekaboo webhook
+        run: |
+          curl -s -X POST ${{ secrets.PEEKABOO_WEBHOOK_URL }} \
+            -H "x-peekaboo-secret: ${{ secrets.PEEKABOO_SECRET }}" \
+            -H "Content-Type: application/json" \
+            -d '{"build_id":"${{ github.event.inputs.build_id }}"}'
+        working-directory: ./feeflow-mobile
+
+      - name: Notify failure
+        if: failure()
+        run: |
+          ERROR_MSG="Build failed"
+          if grep -r "PEEKABOO_ERROR:.*LARGE" . 2>/dev/null; then
+            SIZE=$(grep -r "PEEKABOO_ERROR:.*LARGE" . 2>/dev/null | grep -o '[0-9]*$' | head -1)
+            ERROR_MSG="APP_SIZE_LIMIT:${SIZE}MB"
+          fi
+          curl -s -X POST ${{ secrets.PEEKABOO_WEBHOOK_URL }} \
+            -H "x-peekaboo-secret: ${{ secrets.PEEKABOO_SECRET }}" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"build_id\": \"${{ github.event.inputs.build_id }}\",
+              \"status\": \"failed\",
+              \"error\": \"$ERROR_MSG. Logs: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\"
+            }"
